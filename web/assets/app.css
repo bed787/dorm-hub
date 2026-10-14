@@ -1723,7 +1723,7 @@ dialog::backdrop {
   --brand-logo-height: 132px;
   --login-logo-width: 176px;
   --login-logo-height: 160px;
-  --topbar-height: 134px;
+  --topbar-height: 156px;
 }
 
 .brand img,
@@ -1744,7 +1744,7 @@ dialog::backdrop {
 .topbar {
   height: auto;
   min-height: var(--topbar-height);
-  padding: 0 28px;
+  padding: 12px 28px;
 }
 
 .sidebar {
@@ -1771,11 +1771,11 @@ dialog::backdrop {
     --brand-logo-height: 96px;
     --login-logo-width: 132px;
     --login-logo-height: 120px;
-    --topbar-height: 160px;
+    --topbar-height: 175px;
   }
 
   .topbar {
-    padding: 4px 16px;
+    padding: 12px 16px;
   }
 
   .sidebar.open {
@@ -1791,6 +1791,6 @@ dialog::backdrop {
     --brand-logo-height: 88px;
     --login-logo-width: 120px;
     --login-logo-height: 110px;
-    --topbar-height: 152px;
+    --topbar-height: 167px;
   }
 }
