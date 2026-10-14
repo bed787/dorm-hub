@@ -24,7 +24,7 @@ import (
 func TestMaintenanceAccessAndRecovery(t *testing.T) {
 	db := setup(t)
 	ctx := context.Background()
-	t.Cleanup(func() { _, _ = db.Exec(ctx, `UPDATE site_settings SET maintenance=false`) })
+	t.Cleanup(func() { _, _ = db.Exec(ctx, `UPDATE site_settings SET maintenance=false,maintenance_reason=''`) })
 	member := account(t, db, "member@students.example", false)
 	admin := account(t, db, "admin@students.example", true)
 	account(t, db, "otheradmin@students.example", true)
@@ -75,10 +75,16 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 	check(do("GET", path, "", memberToken, ""), 403)
 	check(do("PUT", path, `{"maintenance":true}`, memberToken, memberCSRF), 403)
 	check(do("PUT", path, `{"maintenance":true}`, adminToken, "wrong"), 403)
-	for _, body := range []string{`{}`, `{"maintenance":null}`, `{"maintenance":"true"}`, `{"maintenance":true,"extra":1}`} {
+	for _, body := range []string{`{}`, `{"maintenance":null}`, `{"maintenance":"true"}`, `{"maintenance":true,"extra":1}`, `{"maintenance":true}`, `{"maintenance":true,"reason":"  \n  "}`, `{"maintenance":true,"reason":"` + strings.Repeat("я", 1001) + `"}`} {
 		check(do("PUT", path, body, adminToken, adminCSRF), 400)
 	}
-	check(do("PUT", path, `{"maintenance":true}`, adminToken, adminCSRF), 200)
+	reason := "Обновляем правила площадки.\n<script>alert(1)</script>"
+	input, _ := json.Marshal(map[string]any{"maintenance": true, "reason": " \n" + reason + "  "})
+	check(do("PUT", path, string(input), adminToken, adminCSRF), 200)
+	var savedReason string
+	if err = db.QueryRow(ctx, `SELECT maintenance_reason FROM site_settings WHERE singleton=true`).Scan(&savedReason); err != nil || savedReason != reason {
+		t.Fatal("reason was not trimmed/persisted", savedReason, err)
+	}
 
 	// Rebuilding the handler simulates a new app instance; no in-memory flag is used.
 	handler = makeHandler()
@@ -86,6 +92,9 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 	check(w, 503)
 	if !strings.Contains(w.Body.String(), "Технические работы") || w.Header().Get("Retry-After") == "" || w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("missing maintenance page/headers")
+	}
+	if !strings.Contains(w.Body.String(), "Обновляем правила площадки.") || strings.Contains(w.Body.String(), "<script>alert(1)</script>") || !strings.Contains(w.Body.String(), "&lt;script&gt;") {
+		t.Fatal("public reason was missing or rendered as HTML", w.Body.String())
 	}
 	w = do("HEAD", "/", "", "", "")
 	check(w, 503)
@@ -97,6 +106,14 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 		check(w, 503)
 		if !strings.Contains(w.Body.String(), `"code":"maintenance"`) {
 			t.Fatal("API did not identify maintenance")
+		}
+		var payload struct {
+			Error struct {
+				Reason string `json:"reason"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil || payload.Error.Reason != reason {
+			t.Fatal("API lost the public reason", err)
 		}
 	}
 	check(do("POST", "/api/listings", `{}`, memberToken, memberCSRF), 503)
@@ -138,6 +155,11 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 		}
 	}
 	check(do("PUT", path, `{"maintenance":false}`, adminToken, adminCSRF), 200)
+	if err = db.QueryRow(ctx, `SELECT maintenance_reason FROM site_settings WHERE singleton=true`).Scan(&savedReason); err != nil || savedReason != "" {
+		t.Fatal("reopening retained the old reason", savedReason, err)
+	}
+	// Closing again requires a fresh reason rather than silently reusing the old one.
+	check(do("PUT", path, `{"maintenance":true}`, adminToken, adminCSRF), 400)
 	check(do("GET", "/", "", "", ""), 200)
 	check(do("GET", "/api/listings", "", memberToken, ""), 200)
 	check(do("POST", "/api/auth/request", `{"email":"new@students.example"}`, "", guestCSRF), 200)

@@ -2,6 +2,7 @@ package web
 
 import (
 	"embed"
+	"html/template"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 //go:embed index.html maintenance.html assets/*
 var files embed.FS
+
+var maintenancePage = template.Must(template.ParseFS(files, "maintenance.html"))
 
 func Handler() http.Handler {
 	assets, _ := fs.Sub(files, "assets")
@@ -40,14 +43,16 @@ func Handler() http.Handler {
 	})
 }
 
-func Maintenance(w http.ResponseWriter, r *http.Request) {
+func Maintenance(w http.ResponseWriter, r *http.Request, reason string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Retry-After", "3600")
 	w.Header().Set("X-Robots-Tag", "noindex")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	if r.Method != http.MethodHead {
-		data, _ := files.ReadFile("maintenance.html")
-		_, _ = w.Write(data)
+		if strings.TrimSpace(reason) == "" {
+			reason = "Сайт временно закрыт. Пожалуйста, загляните позже."
+		}
+		_ = maintenancePage.Execute(w, struct{ Reason string }{Reason: reason})
 	}
 }

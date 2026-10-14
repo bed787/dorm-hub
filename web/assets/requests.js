@@ -34,7 +34,8 @@
         const error = new Error(payload.error?.message || 'Ошибка запроса');
         error.status = response.status;
         error.code = payload.error?.code;
-        if (response.status === 503 && error.code === 'maintenance') onMaintenance();
+        error.maintenanceReason = payload.error?.reason;
+        if (response.status === 503 && error.code === 'maintenance') onMaintenance(error.maintenanceReason);
         throw error;
       }
       return payload.data;

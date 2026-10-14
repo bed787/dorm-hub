@@ -8,15 +8,21 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
 
-func (a *API) maintenanceEnabled(ctx context.Context) (bool, error) {
-	var enabled bool
-	err := a.db.QueryRow(ctx, `SELECT maintenance FROM site_settings WHERE singleton=true`).Scan(&enabled)
-	return enabled, err
+type siteSettingsState struct {
+	Maintenance bool   `json:"maintenance"`
+	Reason      string `json:"reason"`
 }
 
-func maintenanceResponse(w http.ResponseWriter, r *http.Request) {
+func (a *API) maintenanceStatus(ctx context.Context) (siteSettingsState, error) {
+	var state siteSettingsState
+	err := a.db.QueryRow(ctx, `SELECT maintenance,maintenance_reason FROM site_settings WHERE singleton=true`).Scan(&state.Maintenance, &state.Reason)
+	return state, err
+}
+
+func maintenanceResponse(w http.ResponseWriter, r *http.Request, reason string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Retry-After", "3600")
 	if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -25,11 +31,12 @@ func maintenanceResponse(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodHead {
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{
 				"code": "maintenance", "message": "На сайте технические работы. Пожалуйста, загляните позже.",
+				"reason": reason,
 			}})
 		}
 		return
 	}
-	web.Maintenance(w, r)
+	web.Maintenance(w, r, reason)
 }
 
 // The gate runs before all application routes, including photo reads and writes.
@@ -47,12 +54,12 @@ func (a *API) maintenanceGate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		enabled, err := a.maintenanceEnabled(r.Context())
+		state, err := a.maintenanceStatus(r.Context())
 		if err != nil {
 			a.fail(w, r, err)
 			return
 		}
-		if enabled {
+		if state.Maintenance {
 			if cookie, err := r.Cookie(a.cfg.SessionCookie()); err == nil {
 				session, err := a.auth.Authenticate(r.Context(), cookie.Value)
 				if err == nil && session.User.IsAdmin {
@@ -60,7 +67,7 @@ func (a *API) maintenanceGate(next http.Handler) http.Handler {
 					return
 				}
 			}
-			maintenanceResponse(w, r)
+			maintenanceResponse(w, r, state.Reason)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -70,8 +77,8 @@ func (a *API) maintenanceGate(next http.Handler) http.Handler {
 // This check precedes sending an OTP and creating a user/session. A direct API
 // request or the administrator login page cannot register a regular visitor.
 func (a *API) allowMaintenanceLogin(w http.ResponseWriter, r *http.Request, email string) (bool, error) {
-	enabled, err := a.maintenanceEnabled(r.Context())
-	if err != nil || !enabled {
+	state, err := a.maintenanceStatus(r.Context())
+	if err != nil || !state.Maintenance {
 		return err == nil, err
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -83,23 +90,24 @@ func (a *API) allowMaintenanceLogin(w http.ResponseWriter, r *http.Request, emai
 		}
 	}
 	if !allowed {
-		maintenanceResponse(w, r)
+		maintenanceResponse(w, r, state.Reason)
 	}
 	return allowed, nil
 }
 
 func (a *API) siteSettings(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
-	enabled, err := a.maintenanceEnabled(r.Context())
+	state, err := a.maintenanceStatus(r.Context())
 	if err != nil {
 		return err
 	}
-	respond(w, http.StatusOK, map[string]bool{"maintenance": enabled})
+	respond(w, http.StatusOK, state)
 	return nil
 }
 
 func (a *API) updateSiteSettings(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
 	var input struct {
-		Maintenance *bool `json:"maintenance"`
+		Maintenance *bool  `json:"maintenance"`
+		Reason      string `json:"reason"`
 	}
 	if err := decode(w, r, &input); err != nil {
 		return err
@@ -107,9 +115,17 @@ func (a *API) updateSiteSettings(w http.ResponseWriter, r *http.Request, _ auth.
 	if input.Maintenance == nil {
 		return domain.Invalid("Укажите maintenance: true или false")
 	}
-	if _, err := a.db.Exec(r.Context(), `UPDATE site_settings SET maintenance=$1,updated_at=now() WHERE singleton=true`, *input.Maintenance); err != nil {
+	reason := strings.TrimSpace(input.Reason)
+	if *input.Maintenance {
+		if reason == "" || !utf8.ValidString(reason) || utf8.RuneCountInString(reason) > 1000 {
+			return domain.Invalid("Укажите причину технических работ: от 1 до 1000 символов")
+		}
+	} else {
+		reason = ""
+	}
+	if _, err := a.db.Exec(r.Context(), `UPDATE site_settings SET maintenance=$1,maintenance_reason=$2,updated_at=now() WHERE singleton=true`, *input.Maintenance, reason); err != nil {
 		return err
 	}
-	respond(w, http.StatusOK, map[string]bool{"maintenance": *input.Maintenance})
+	respond(w, http.StatusOK, siteSettingsState{Maintenance: *input.Maintenance, Reason: reason})
 	return nil
 }

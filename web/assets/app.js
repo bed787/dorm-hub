@@ -17,6 +17,7 @@ const state = {
   deletionResendAt: 0,
   maintenance: false,
   siteMaintenance: false,
+  maintenanceReason: "",
 };
 const app = document.querySelector("#app"),
   dialog = document.querySelector("#dialog");
@@ -59,10 +60,14 @@ function toast(message, error = false) {
   }, 6000);
 }
 const { api, requestKey } = DormHubRequests.createClient(state, (...args) =>
-  fetch(...args), {onMaintenance() {
-    if (location.pathname !== "/admin-login") maintenanceView();
+  fetch(...args), {onMaintenance(reason) {
+    if (location.pathname !== "/admin-login") maintenanceView(reason);
   }},
 );
+function applySiteSettings(settings) {
+  state.siteMaintenance = settings.maintenance;
+  state.maintenanceReason = settings.reason || "";
+}
 function brand() {
   return '<a class="brand row" href="#/feed" aria-label="Dorm Hub — лента"><img src="/assets/icon.svg" alt=""><span>dorm-hub</span></a>';
 }
@@ -564,8 +569,8 @@ async function adminView(params, seq) {
     content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(d.name)}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
   } else if (tab === "site") {
     const settings = await api("/admin/site-settings");
-    state.siteMaintenance = settings.maintenance;
-    content = `<section class="panel" style="max-width:760px"><h2>Технические работы</h2><p><strong>${settings.maintenance ? "Сайт закрыт для посетителей" : "Сайт открыт для посетителей"}</strong></p><p class="muted">В закрытом режиме посетители видят заглушку, а вход, регистрация и действия обычных участников недоступны. Администраторы продолжают работать. Настройка сохраняется после обновлений и перезапусков.</p><button class="button ${settings.maintenance ? "" : "secondary"}" data-action="maintenance-toggle" data-value="${!settings.maintenance}" style="margin-top:16px">${settings.maintenance ? "Открыть сайт" : "Закрыть на технические работы"}</button><p class="small muted" style="margin-top:20px">Если потребуется войти заново, используй <a href="/admin-login">вход администратора</a>. Доступ проверяется по аккаунту.</p></section>`;
+    applySiteSettings(settings);
+    content = `<section class="panel" style="max-width:760px"><h2>Технические работы</h2><p><strong>${settings.maintenance ? "Сайт закрыт для посетителей" : "Сайт открыт для посетителей"}</strong></p><p class="muted">В закрытом режиме посетители видят заглушку, а вход, регистрация и действия обычных участников недоступны. Администраторы продолжают работать. Настройка сохраняется после обновлений и перезапусков.</p>${settings.maintenance ? `<div class="notice"><strong>Причина для посетителей</strong><p style="white-space:pre-wrap;overflow-wrap:anywhere">${h(settings.reason)}</p></div>` : ""}<button class="button ${settings.maintenance ? "" : "secondary"}" data-action="maintenance-toggle" data-value="${!settings.maintenance}" style="margin-top:16px">${settings.maintenance ? "Открыть сайт" : "Закрыть на технические работы"}</button><p class="small muted" style="margin-top:20px">Если потребуется войти заново, используй <a href="/admin-login">вход администратора</a>. Доступ проверяется по аккаунту.</p></section>`;
   } else throw new Error("Раздел не найден");
   mount(
     `<div class="page-head"><h1>Модерация</h1></div>${tabs}${content}`,
@@ -652,7 +657,8 @@ function loginView(code = false) {
   app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>${code ? "Код из письма" : "Вход"}</h1><p class="muted">${code ? "Отправили код на " + h(state.email) + "." : "Используй студенческую почту или разрешённый адрес. Пароль не нужен."}</p><form id="${code ? "code-form" : "login-form"}">${code ? `<label class="field"><span>Код из письма</span><input class="code-input" name="code" maxlength="6" minlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus></label>` : `<label class="field"><span>Почта</span><input name="email" type="email" maxlength="254" autocomplete="email" value="${h(state.email)}" placeholder="stXXXXXX@student.spbu.ru" required autofocus></label>`}<button class="button" type="submit">${code ? "Войти" : "Получить код"}</button></form>${code ? `<div class="row between" style="margin-top:18px"><button class="small muted" data-action="login-back">Изменить почту</button><button class="small muted" data-action="resend" id="resend-button">Отправить ещё раз</button></div>` : ""}<div class="login-note">Доступ к объявлениям и профилям открыт только авторизованным участникам. Твою почту другие студенты не увидят.</div></div></section></main>`;
   tick();
 }
-function maintenanceView() {
+function maintenanceView(reason = state.maintenanceReason) {
+  if (typeof reason === "string") state.maintenanceReason = reason;
   clearTimeout(autosaveTimer);
   if (!state.maintenance) {
     state.maintenance = true;
@@ -661,7 +667,7 @@ function maintenanceView() {
   }
   dialog.close();
   document.title = "Технические работы — Dorm Hub";
-  app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>Технические работы</h1><p class="muted">Сайт временно закрыт. Пожалуйста, загляните позже.</p><div class="row wrap" style="margin-top:24px"><a class="button" href="/">Проверить доступность</a><a class="button plain" href="/admin-login">Вход администратора</a></div></div></section></main>`;
+  app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>Технические работы</h1><p class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">${h(state.maintenanceReason || "Сайт временно закрыт. Пожалуйста, загляните позже.")}</p><div style="margin-top:24px"><a class="button" href="/">Проверить доступность</a></div><p style="margin-top:28px;text-align:right"><a class="small muted" href="/admin-login">Для администратора</a></p></div></section></main>`;
 }
 async function guest() {
   clearTimeout(autosaveTimer);
@@ -684,7 +690,7 @@ async function initialize() {
     state.email = data.email;
     state.csrf = data.csrf;
     if (state.me.is_admin) {
-      state.siteMaintenance = (await api("/admin/site-settings")).maintenance;
+      applySiteSettings(await api("/admin/site-settings"));
     }
     state.catalog = await api("/catalog");
     await refreshStatistics();
@@ -700,7 +706,7 @@ async function initialize() {
   }
 }
 function bootError(error) {
-  if (error.code === "maintenance") return maintenanceView();
+  if (error.code === "maintenance") return maintenanceView(error.maintenanceReason);
   app.innerHTML = `<div class="panel error-panel"><h1>Dorm Hub</h1><p>Не удалось подключиться к площадке.</p><p class="muted">${h(error.message)}</p><button class="button" data-action="initialize">Повторить</button></div>`;
 }
 function lockControls(form) {
@@ -937,7 +943,7 @@ document.addEventListener("submit", async (event) => {
       state.email = result.email;
       state.csrf = result.csrf;
       if (state.me.is_admin) {
-        state.siteMaintenance = (await api("/admin/site-settings")).maintenance;
+        applySiteSettings(await api("/admin/site-settings"));
         if (location.pathname === "/admin-login") location.hash = "/admin?tab=site";
       }
       state.catalog = await api("/catalog");
@@ -946,9 +952,9 @@ document.addEventListener("submit", async (event) => {
       await route();
     } else if (form.id === "maintenance-form") {
       const settings = await api("/admin/site-settings", {
-        method: "PUT", body: {maintenance: form.dataset.enabled === "true"},
+        method: "PUT", body: {maintenance: form.dataset.enabled === "true", reason: data.get("reason")?.trim() || ""},
       });
-      state.siteMaintenance = settings.maintenance;
+      applySiteSettings(settings);
       closeDialog();
       toast(settings.maintenance ? "Сайт закрыт на технические работы" : "Сайт открыт для посетителей");
       await route();
@@ -1117,7 +1123,7 @@ document.addEventListener("click", async (event) => {
       if (!state.me?.is_admin) return;
       const enabled = value === "true";
       modal(enabled ? "Закрыть сайт для посетителей?" : "Открыть сайт для посетителей?",
-        `<p class="muted">${enabled ? "Посетители увидят страницу технических работ. Твой доступ администратора сохранится." : "Участники снова смогут входить и пользоваться площадкой."}</p><form id="maintenance-form" data-enabled="${enabled}"><button class="button" type="submit">${enabled ? "Включить технические работы" : "Открыть сайт"}</button></form>`);
+        `<p class="muted">${enabled ? "Посетители увидят страницу технических работ. Твой доступ администратора сохранится." : "Участники снова смогут входить и пользоваться площадкой."}</p><form id="maintenance-form" data-enabled="${enabled}">${enabled ? '<label class="field"><span>Причина технических работ</span><textarea name="reason" required maxlength="1000" rows="4" placeholder="Например: обновляем правила площадки и настройки регистрации"></textarea><span class="hint">Этот текст будет виден всем посетителям.</span></label>' : ""}<button class="button" type="submit" style="margin-top:16px">${enabled ? "Включить технические работы" : "Открыть сайт"}</button></form>`);
     } else if (action === "login-back") loginView(false);
     else if (action === "resend") {
       if (Date.now() < state.resendAt) return;

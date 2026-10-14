@@ -5,8 +5,16 @@
 Для открытия используется кнопка **Открыть сайт**. Обе операции требуют
 подтверждения; API дополнительно проверяет администратора, Origin и CSRF.
 
+При каждом включении требуется указать причину (до 1000 символов). Поле всегда
+пустое при новом закрытии; текст отображается посетителям на заглушке и
+администратору в настройках. Переносы строк сохраняются, HTML отображается
+как обычный текст. При открытии сайта причина очищается. Ссылка входа
+администратора на заглушке оформлена небольшим приглушённым текстом внизу.
+
 По умолчанию после установки режим выключен. Состояние хранится в новой
 таблице `site_settings`; миграция `005_site_settings.sql` создаёт её один раз.
+Миграция `006_maintenance_reason.sql` добавляет причину. Если сайт уже закрыт,
+режим сохраняется с общим сообщением до следующего включения с новой причиной.
 Последующие перезапуски и автоматические обновления не сбрасывают состояние.
 Пользовательские данные, объявления и фотографии миграция не изменяет.
 
@@ -36,10 +44,10 @@
 
 ```bash
 cd /Users/ruslan/Desktop/projects/dorm-hub
-unzip -o ~/Downloads/dorm-hub-maintenance.zip -d .
+unzip -o ~/Downloads/dorm-hub-maintenance-reason.zip -d .
 git add internal/httpapi web tests docs/maintenance.md
-git add -f migrations/005_site_settings.sql
-git commit -m "Add administrator maintenance switch"
+git add -f migrations/005_site_settings.sql migrations/006_maintenance_reason.sql
+git commit -m "Require and display maintenance reason"
 git push
 ```
 
@@ -53,9 +61,11 @@ git push
 
 ## API
 
-- `GET /api/admin/site-settings` → `{"data":{"maintenance":false}}`.
-- `PUT /api/admin/site-settings` с `{"maintenance":true}` или false.
-- Закрытые пользовательские API возвращают 503 с `error.code = "maintenance"`.
+- `GET /api/admin/site-settings` → `{"data":{"maintenance":false,"reason":""}}`.
+- `PUT /api/admin/site-settings` с `{"maintenance":true,"reason":"Обновляем правила"}`
+  или `{"maintenance":false}`. Включение без причины отклоняется сервером.
+- Закрытые пользовательские API возвращают 503 с `error.code = "maintenance"`
+  и `error.reason`, чтобы уже открытая вкладка показывала ту же причину.
 
 Включение блокирует новые запросы. Запрос, уже выполнявшийся в момент
 переключения, может завершиться. Это режим доступа приложения, а не способ
