@@ -15,6 +15,8 @@ const state = {
   editor: null,
   completedDeals: 0,
   deletionResendAt: 0,
+  maintenance: false,
+  siteMaintenance: false,
 };
 const app = document.querySelector("#app"),
   dialog = document.querySelector("#dialog");
@@ -57,7 +59,9 @@ function toast(message, error = false) {
   }, 6000);
 }
 const { api, requestKey } = DormHubRequests.createClient(state, (...args) =>
-  fetch(...args),
+  fetch(...args), {onMaintenance() {
+    if (location.pathname !== "/admin-login") maintenanceView();
+  }},
 );
 function brand() {
   return '<a class="brand row" href="#/feed" aria-label="Dorm Hub — лента"><img src="/assets/icon.svg" alt=""><span>dorm-hub</span></a>';
@@ -122,7 +126,9 @@ function shell() {
 }
 function mount(content, seq) {
   if (seq !== state.seq) return;
-  document.querySelector("#view").innerHTML = content;
+  const banner = state.me?.is_admin && state.siteMaintenance
+    ? '<div class="notice" role="status">Технические работы включены. Посетители не видят площадку. <a href="#/admin?tab=site">Управление доступом</a></div>' : "";
+  document.querySelector("#view").innerHTML = banner + content;
   tick();
 }
 function empty(title, text, button = "") {
@@ -532,6 +538,7 @@ async function adminView(params, seq) {
     ["reports", "Жалобы"],
     ["users", "Пользователи"],
     ["dorms", "Общежития"],
+    ["site", "Доступ к сайту"],
   ]
     .map(
       ([v, n]) =>
@@ -555,6 +562,10 @@ async function adminView(params, seq) {
     content = `<div class="panel table-wrap"><table><thead><tr><th>Пользователь</th><th>Состояние</th><th>Регистрация</th><th>Действия</th></tr></thead><tbody>${items.map((u) => `<tr><td><strong>${h(u.nickname)}</strong><div class="small muted">№${u.id}${u.is_admin ? " · администратор" : ""}</div></td><td><span class="pill ${u.blocked ? "red" : u.active ? "" : "gray"}">${u.blocked ? "Заблокирован" : u.active ? "Активен" : "Деактивирован"}</span></td><td>${h(date(u.created_at))}</td><td><div class="account-actions">${!u.is_admin && u.id !== state.me.id ? `<button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="${u.blocked ? "unblock" : "block"}">${u.blocked ? "Разблокировать" : "Заблокировать"}</button><button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="delete">Удалить</button>` : "—"}</div></td></tr>`).join("")}</tbody></table></div>${adminPager(items.length, offset, params)}`;
   } else if (tab === "dorms") {
     content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(d.name)}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
+  } else if (tab === "site") {
+    const settings = await api("/admin/site-settings");
+    state.siteMaintenance = settings.maintenance;
+    content = `<section class="panel" style="max-width:760px"><h2>Технические работы</h2><p><strong>${settings.maintenance ? "Сайт закрыт для посетителей" : "Сайт открыт для посетителей"}</strong></p><p class="muted">В закрытом режиме посетители видят заглушку, а вход, регистрация и действия обычных участников недоступны. Администраторы продолжают работать. Настройка сохраняется после обновлений и перезапусков.</p><button class="button ${settings.maintenance ? "" : "secondary"}" data-action="maintenance-toggle" data-value="${!settings.maintenance}" style="margin-top:16px">${settings.maintenance ? "Открыть сайт" : "Закрыть на технические работы"}</button><p class="small muted" style="margin-top:20px">Если потребуется войти заново, используй <a href="/admin-login">вход администратора</a>. Доступ проверяется по аккаунту.</p></section>`;
   } else throw new Error("Раздел не найден");
   mount(
     `<div class="page-head"><h1>Модерация</h1></div>${tabs}${content}`,
@@ -569,6 +580,7 @@ function adminPager(count, offset, params) {
   return `<div class="pagination">${offset ? `<a class="button plain" href="#/admin?${h(p.toString())}">← Назад</a>` : ""}${count === 50 ? `<a class="button plain" href="#/admin?${h(n.toString())}">Далее →</a>` : ""}</div>`;
 }
 async function route() {
+  if (state.maintenance) return maintenanceView();
   const generation = ++routeGeneration;
   try {
     await leaveEditor();
@@ -640,6 +652,17 @@ function loginView(code = false) {
   app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>${code ? "Код из письма" : "Вход"}</h1><p class="muted">${code ? "Отправили код на " + h(state.email) + "." : "Используй студенческую почту или разрешённый адрес. Пароль не нужен."}</p><form id="${code ? "code-form" : "login-form"}">${code ? `<label class="field"><span>Код из письма</span><input class="code-input" name="code" maxlength="6" minlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus></label>` : `<label class="field"><span>Почта</span><input name="email" type="email" maxlength="254" autocomplete="email" value="${h(state.email)}" placeholder="stXXXXXX@student.spbu.ru" required autofocus></label>`}<button class="button" type="submit">${code ? "Войти" : "Получить код"}</button></form>${code ? `<div class="row between" style="margin-top:18px"><button class="small muted" data-action="login-back">Изменить почту</button><button class="small muted" data-action="resend" id="resend-button">Отправить ещё раз</button></div>` : ""}<div class="login-note">Доступ к объявлениям и профилям открыт только авторизованным участникам. Твою почту другие студенты не увидят.</div></div></section></main>`;
   tick();
 }
+function maintenanceView() {
+  clearTimeout(autosaveTimer);
+  if (!state.maintenance) {
+    state.maintenance = true;
+    ++state.seq;
+    ++routeGeneration;
+  }
+  dialog.close();
+  document.title = "Технические работы — Dorm Hub";
+  app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>Технические работы</h1><p class="muted">Сайт временно закрыт. Пожалуйста, загляните позже.</p><div class="row wrap" style="margin-top:24px"><a class="button" href="/">Проверить доступность</a><a class="button plain" href="/admin-login">Вход администратора</a></div></div></section></main>`;
+}
 async function guest() {
   clearTimeout(autosaveTimer);
   state.editor = null;
@@ -648,21 +671,26 @@ async function guest() {
   state.csrf = "";
   state.catalog = null;
   ++state.seq;
+  if (state.siteMaintenance && location.pathname !== "/admin-login") return maintenanceView();
   const data = await api("/auth/bootstrap");
   state.guestCSRF = data.csrf;
   loginView();
 }
 async function initialize() {
+  state.maintenance = false;
   try {
     const data = await api("/me");
     state.me = data.user;
     state.email = data.email;
     state.csrf = data.csrf;
+    if (state.me.is_admin) {
+      state.siteMaintenance = (await api("/admin/site-settings")).maintenance;
+    }
     state.catalog = await api("/catalog");
     await refreshStatistics();
     await route();
   } catch (e) {
-    if (e.status === 401) {
+    if (e.status === 401 || (e.code === "maintenance" && location.pathname === "/admin-login")) {
       try {
         await guest();
       } catch (error) {
@@ -672,6 +700,7 @@ async function initialize() {
   }
 }
 function bootError(error) {
+  if (error.code === "maintenance") return maintenanceView();
   app.innerHTML = `<div class="panel error-panel"><h1>Dorm Hub</h1><p>Не удалось подключиться к площадке.</p><p class="muted">${h(error.message)}</p><button class="button" data-action="initialize">Повторить</button></div>`;
 }
 function lockControls(form) {
@@ -907,9 +936,21 @@ document.addEventListener("submit", async (event) => {
       state.me = result.user;
       state.email = result.email;
       state.csrf = result.csrf;
+      if (state.me.is_admin) {
+        state.siteMaintenance = (await api("/admin/site-settings")).maintenance;
+        if (location.pathname === "/admin-login") location.hash = "/admin?tab=site";
+      }
       state.catalog = await api("/catalog");
       await refreshStatistics();
       if (!location.hash || location.hash === "#/") location.hash = "/feed";
+      await route();
+    } else if (form.id === "maintenance-form") {
+      const settings = await api("/admin/site-settings", {
+        method: "PUT", body: {maintenance: form.dataset.enabled === "true"},
+      });
+      state.siteMaintenance = settings.maintenance;
+      closeDialog();
+      toast(settings.maintenance ? "Сайт закрыт на технические работы" : "Сайт открыт для посетителей");
       await route();
     } else if (form.id === "settings-form") {
       state.me = await api("/me", {
@@ -1072,6 +1113,11 @@ document.addEventListener("click", async (event) => {
       await leaveEditor();
       await api("/auth/logout", { method: "POST" });
       await guest();
+    } else if (action === "maintenance-toggle") {
+      if (!state.me?.is_admin) return;
+      const enabled = value === "true";
+      modal(enabled ? "Закрыть сайт для посетителей?" : "Открыть сайт для посетителей?",
+        `<p class="muted">${enabled ? "Посетители увидят страницу технических работ. Твой доступ администратора сохранится." : "Участники снова смогут входить и пользоваться площадкой."}</p><form id="maintenance-form" data-enabled="${enabled}"><button class="button" type="submit">${enabled ? "Включить технические работы" : "Открыть сайт"}</button></form>`);
     } else if (action === "login-back") loginView(false);
     else if (action === "resend") {
       if (Date.now() < state.resendAt) return;
@@ -1346,7 +1392,7 @@ function storeEditor(editor) {
 }
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
-  if (!state.editor || state.editor.closing) return;
+  if (state.maintenance || !state.editor || state.editor.closing) return;
   autosaveTimer = setTimeout(
     () =>
       autosave().catch((e) =>

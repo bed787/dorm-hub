@@ -69,6 +69,8 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("POST /api/me/deletion-code", true, false, a.requestDeletionCode)
 	route("DELETE /api/me", true, false, a.deleteAccount)
 	route("GET /api/statistics", true, false, a.statistics)
+	route("GET /api/admin/site-settings", true, true, a.siteSettings)
+	route("PUT /api/admin/site-settings", true, true, a.updateSiteSettings)
 	route("GET /api/admin/listings", true, true, a.reviewQueue)
 	route("POST /api/admin/listings/{id}/review", true, true, a.reviewListing)
 	route("DELETE /api/listings/{id}", true, false, a.deleteListing)
@@ -96,7 +98,7 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("DELETE /api/admin/dorms/{id}", true, true, a.deleteDorm)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { a.fail(w, r, domain.ErrNotFound) })
 	mux.Handle("/", web.Handler())
-	return middleware.Wrap(mux, logger)
+	return middleware.Wrap(a.maintenanceGate(mux), logger)
 }
 
 type endpoint func(http.ResponseWriter, *http.Request, auth.Session) error

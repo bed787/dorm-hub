@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-//go:embed index.html assets/*
+//go:embed index.html maintenance.html assets/*
 var files embed.FS
 
 func Handler() http.Handler {
@@ -23,7 +23,7 @@ func Handler() http.Handler {
 			static.ServeHTTP(w, r)
 			return
 		}
-		if r.URL.Path != "/" {
+		if r.URL.Path != "/" && r.URL.Path != "/admin-login" {
 			http.NotFound(w, r)
 			return
 		}
@@ -38,4 +38,16 @@ func Handler() http.Handler {
 			_, _ = w.Write(data)
 		}
 	})
+}
+
+func Maintenance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "3600")
+	w.Header().Set("X-Robots-Tag", "noindex")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if r.Method != http.MethodHead {
+		data, _ := files.ReadFile("maintenance.html")
+		_, _ = w.Write(data)
+	}
 }

@@ -34,6 +34,9 @@ func (a *API) requestCode(w http.ResponseWriter, r *http.Request, _ auth.Session
 	if err := decode(w, r, &in); err != nil {
 		return err
 	}
+	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
+		return err
+	}
 	if err := a.auth.Request(r.Context(), in.Email); err != nil {
 		return err
 	}
@@ -47,6 +50,9 @@ func (a *API) verifyCode(w http.ResponseWriter, r *http.Request, _ auth.Session)
 		Reactivate bool   `json:"reactivate"`
 	}
 	if err := decode(w, r, &in); err != nil {
+		return err
+	}
+	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
 	token, session, err := a.auth.Verify(r.Context(), in.Email, in.Code, in.Reactivate)

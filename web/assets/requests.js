@@ -8,7 +8,7 @@
     return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
-  function createClient(state, fetcher) {
+  function createClient(state, fetcher, {onMaintenance = () => {}} = {}) {
     async function api(path, {method = 'GET', body, guest = false, idempotencyKey, retryGuest = true} = {}) {
       const headers = {};
       if (method !== 'GET' && method !== 'HEAD') {
@@ -33,6 +33,8 @@
         }
         const error = new Error(payload.error?.message || 'Ошибка запроса');
         error.status = response.status;
+        error.code = payload.error?.code;
+        if (response.status === 503 && error.code === 'maintenance') onMaintenance();
         throw error;
       }
       return payload.data;
