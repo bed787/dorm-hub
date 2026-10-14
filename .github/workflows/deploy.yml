@@ -1,0 +1,81 @@
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: dorm-hub-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      IMAGE_NAME: ghcr.io/bed787/dorm-hub
+      DEPLOY_HOST: 157.228.138.75
+    steps:
+      - name: Download source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Test frontend
+        run: node --test tests/*.test.cjs
+
+      - name: Log in to private image registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Test Go, build and publish image
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$IMAGE_NAME:$GITHUB_SHA"
+          # The existing Dockerfile runs go vet and go test before compilation.
+          docker build --pull \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$image" .
+          docker push "$image"
+          digest=$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')
+          [[ "$digest" =~ ^ghcr\.io/bed787/dorm-hub@sha256:[a-f0-9]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Update server and check health
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/dorm-hub-deploy-key"
+          hosts="$RUNNER_TEMP/dorm-hub-known-hosts"
+          trap 'rm -f "$key" "$hosts"' EXIT
+          test -n "$DEPLOY_KEY"
+          test -n "$KNOWN_HOSTS"
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$hosts"
+          printf '%s\n' "$REGISTRY_TOKEN" | ssh \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+            -o "UserKnownHostsFile=$hosts" -i "$key" \
+            "root@$DEPLOY_HOST" "deploy $IMAGE_DIGEST"
+          printf '### Website updated\n\nImage: `%s`\n' "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of image registry
+        if: always()
+        run: docker logout ghcr.io
