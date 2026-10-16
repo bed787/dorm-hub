@@ -2,13 +2,14 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f4f3ef"><meta name="description" content="Dorm Hub — закрытая площадка объявлений для студентов СПбГУ.">
-<title>Dorm Hub</title>
+<meta name="theme-color" content="#f4f3ef"><meta name="description" content="{{.Description}}">
+<title>{{.Title}}</title>
+{{if .Landing}}<link rel="canonical" href="{{.Canonical}}"><meta property="og:type" content="website"><meta property="og:title" content="{{.Title}}"><meta property="og:description" content="{{.Description}}"><meta property="og:url" content="{{.Canonical}}">{{else}}<meta name="robots" content="noindex, nofollow">{{end}}
 <link rel="icon" type="image/svg+xml" href="/assets/icon.svg">
 <script src="/assets/theme.js"></script>
-<link rel="stylesheet" href="/assets/app.css"><script src="/assets/utils.js" defer></script><script src="/assets/requests.js" defer></script><script src="/assets/selects.js" defer></script><script src="/assets/editor-store.js" defer></script><script src="/assets/app.js" defer></script>
+<link rel="stylesheet" href="/assets/app.css"><link rel="stylesheet" href="/assets/public.css"><script src="/assets/utils.js" defer></script><script src="/assets/requests.js" defer></script><script src="/assets/selects.js" defer></script><script src="/assets/editor-store.js" defer></script><script src="/assets/app.js" defer></script>
 </head>
-<body><div id="app"><div class="boot" role="status">Открываем Dorm Hub…</div></div>
+<body><div id="app">{{if .Landing}}{{template "landing" .}}{{else}}<div class="boot" role="status">Открываем Dorm Hub…</div>{{end}}</div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
 <noscript>Для работы Dorm Hub включите JavaScript в браузере.</noscript>

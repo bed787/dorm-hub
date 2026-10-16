@@ -10,6 +10,7 @@ import (
 	sender "dorm-hub/internal/platform/mail"
 	"dorm-hub/internal/users"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
@@ -56,7 +57,34 @@ func (s *Service) digest(email, code string) string {
 	m.Write([]byte(email + ":" + code))
 	return hex.EncodeToString(m.Sum(nil))
 }
+
+// Acceptance contains server-selected document snapshots, never client text.
+type Acceptance struct {
+	ConsentVersion string    `json:"consent_version"`
+	RulesVersion   string    `json:"rules_version"`
+	ConsentText    string    `json:"consent_text"`
+	RulesText      string    `json:"rules_text"`
+	AcceptedAt     time.Time `json:"accepted_at"`
+}
+
+func (a Acceptance) valid() bool {
+	return len(a.ConsentVersion) == 64 && len(a.RulesVersion) == 64 && a.ConsentText != "" && a.RulesText != "" && !a.AcceptedAt.IsZero()
+}
+
+// Request is the internal entry point used by service consumers. HTTP uses
+// RequestWithAcceptance and verifies the current versions before any email write.
 func (s *Service) Request(ctx context.Context, email string) error {
+	return s.request(ctx, email, nil)
+}
+
+func (s *Service) RequestWithAcceptance(ctx context.Context, email string, acceptance Acceptance) error {
+	if !acceptance.valid() {
+		return domain.Invalid("Подтвердите согласие и правила")
+	}
+	return s.request(ctx, email, &acceptance)
+}
+
+func (s *Service) request(ctx context.Context, email string, acceptance *Acceptance) error {
 	email, err := s.normalize(email)
 	if err != nil {
 		return err
@@ -66,7 +94,14 @@ func (s *Service) Request(ctx context.Context, email string) error {
 		return err
 	}
 	code := fmt.Sprintf("%06d", n.Int64())
-	if err = s.saveCode(ctx, email, s.digest(email, code)); err != nil {
+	var savedAcceptance []byte
+	if acceptance != nil {
+		savedAcceptance, err = json.Marshal(acceptance)
+		if err != nil {
+			return err
+		}
+	}
+	if err = s.saveCode(ctx, email, s.digest(email, code), savedAcceptance); err != nil {
 		return err
 	}
 	if err = s.mail.SendCode(ctx, email, code); err != nil {

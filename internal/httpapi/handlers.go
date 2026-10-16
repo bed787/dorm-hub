@@ -7,8 +7,10 @@ import (
 	"dorm-hub/internal/media"
 	"dorm-hub/internal/platform/idempotency"
 	"dorm-hub/internal/users"
+	"dorm-hub/web"
 	"io"
 	"net/http"
+	"time"
 )
 
 func (a *API) bootstrap(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
@@ -24,12 +26,17 @@ func (a *API) bootstrap(w http.ResponseWriter, r *http.Request, _ auth.Session) 
 		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: a.loginCookie(), Value: token, Path: "/", HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: 1800})
-	respond(w, 200, map[string]string{"csrf": token})
+	documents := web.CurrentLegal()
+	respond(w, 200, map[string]any{"csrf": token, "legal": map[string]string{"consent_version": documents.ConsentVersion, "rules_version": documents.RulesVersion}})
 	return nil
 }
 func (a *API) requestCode(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
 	var in struct {
-		Email string `json:"email"`
+		Email          string `json:"email"`
+		Consent        bool   `json:"consent"`
+		Rules          bool   `json:"rules"`
+		ConsentVersion string `json:"consent_version"`
+		RulesVersion   string `json:"rules_version"`
 	}
 	if err := decode(w, r, &in); err != nil {
 		return err
@@ -37,7 +44,15 @@ func (a *API) requestCode(w http.ResponseWriter, r *http.Request, _ auth.Session
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
-	if err := a.auth.Request(r.Context(), in.Email); err != nil {
+	documents := web.CurrentLegal()
+	if !in.Consent || !in.Rules {
+		return domain.Invalid("Подтвердите согласие на обработку данных и примите правила сайта")
+	}
+	if in.ConsentVersion != documents.ConsentVersion || in.RulesVersion != documents.RulesVersion {
+		return domain.Conflict("Тексты документов обновились. Обновите страницу и подтвердите их заново")
+	}
+	acceptance := auth.Acceptance{ConsentVersion: documents.ConsentVersion, RulesVersion: documents.RulesVersion, ConsentText: documents.ConsentText, RulesText: documents.RulesText, AcceptedAt: time.Now().UTC()}
+	if err := a.auth.RequestWithAcceptance(r.Context(), in.Email, acceptance); err != nil {
 		return err
 	}
 	respond(w, 200, map[string]bool{"sent": true})
@@ -55,7 +70,7 @@ func (a *API) verifyCode(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
-	token, session, err := a.auth.Verify(r.Context(), in.Email, in.Code, in.Reactivate)
+	token, session, err := a.auth.Verify(r.Context(), in.Email, in.Code, in.Reactivate, true)
 	if err != nil {
 		return err
 	}

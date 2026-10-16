@@ -117,7 +117,7 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 		}
 	}
 	check(do("POST", "/api/listings", `{}`, memberToken, memberCSRF), 503)
-	for _, path := range []string{"/health", "/ready", "/assets/app.js", "/admin-login", "/api/auth/bootstrap"} {
+	for _, path := range []string{"/health", "/ready", "/assets/app.js", "/admin-login", "/api/auth/bootstrap", "/rules", "/privacy", "/consent", "/robots.txt", "/sitemap.xml"} {
 		check(do("GET", path, "", "", ""), 200)
 	}
 	check(do("GET", "/", "", adminToken, ""), 200)
@@ -136,7 +136,7 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 	// Both configured administrators and existing database administrators can recover access.
 	for _, email := range []string{"admin@students.example", "otheradmin@students.example"} {
 		body, _ := json.Marshal(map[string]string{"email": email})
-		check(do("POST", "/api/auth/request", string(body), "", guestCSRF), 200)
+		check(do("POST", "/api/auth/request", legalRequestBody(email), "", guestCSRF), 200)
 		mail.mu.Lock()
 		code := mail.code
 		mail.mu.Unlock()
@@ -162,5 +162,5 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 	check(do("PUT", path, `{"maintenance":true}`, adminToken, adminCSRF), 400)
 	check(do("GET", "/", "", "", ""), 200)
 	check(do("GET", "/api/listings", "", memberToken, ""), 200)
-	check(do("POST", "/api/auth/request", `{"email":"new@students.example"}`, "", guestCSRF), 200)
+	check(do("POST", "/api/auth/request", legalRequestBody("new@students.example"), "", guestCSRF), 200)
 }

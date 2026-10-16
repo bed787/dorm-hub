@@ -97,7 +97,7 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("POST /api/admin/dorms", true, true, a.createDorm)
 	route("DELETE /api/admin/dorms/{id}", true, true, a.deleteDorm)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { a.fail(w, r, domain.ErrNotFound) })
-	mux.Handle("/", web.Handler())
+	mux.Handle("/", web.HandlerFor(cfg.BaseURL))
 	return middleware.Wrap(a.maintenanceGate(mux), logger)
 }
 

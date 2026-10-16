@@ -6,13 +6,14 @@ import (
 	"dorm-hub/internal/domain"
 	"dorm-hub/internal/platform/postgres"
 	"dorm-hub/internal/users"
+	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5"
 	"strconv"
 	"time"
 )
 
-func (s *Service) saveCode(ctx context.Context, email, digest string) error {
+func (s *Service) saveCode(ctx context.Context, email, digest string, acceptance []byte) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -29,13 +30,17 @@ func (s *Service) saveCode(ctx context.Context, email, digest string) error {
 	if err == nil && time.Since(sent) < time.Minute {
 		return &domain.Error{Kind: domain.ErrRateLimit, Message: "Повторный код можно запросить через минуту"}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO login_codes(email,digest,expires_at) VALUES($1,$2,now()+interval '10 minutes') ON CONFLICT(email) DO UPDATE SET digest=excluded.digest,created_at=now(),expires_at=excluded.expires_at,attempts=0`, email, digest)
+	var document any
+	if len(acceptance) != 0 {
+		document = string(acceptance)
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO login_codes(email,digest,expires_at,legal_acceptance) VALUES($1,$2,now()+interval '10 minutes',$3::jsonb) ON CONFLICT(email) DO UPDATE SET digest=excluded.digest,created_at=now(),expires_at=excluded.expires_at,attempts=0,legal_acceptance=excluded.legal_acceptance`, email, digest, document)
 	if err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
-func (s *Service) Verify(ctx context.Context, email, code string, reactivate bool) (string, Session, error) {
+func (s *Service) Verify(ctx context.Context, email, code string, reactivate bool, requireAcceptance ...bool) (string, Session, error) {
 	email, err := s.normalize(email)
 	if err != nil {
 		return "", Session{}, err
@@ -56,7 +61,8 @@ func (s *Service) Verify(ctx context.Context, email, code string, reactivate boo
 	var digest string
 	var expires time.Time
 	var attempts int
-	err = tx.QueryRow(ctx, `SELECT digest,expires_at,attempts FROM login_codes WHERE email=$1 FOR UPDATE`, email).Scan(&digest, &expires, &attempts)
+	var rawAcceptance []byte
+	err = tx.QueryRow(ctx, `SELECT digest,expires_at,attempts,legal_acceptance FROM login_codes WHERE email=$1 FOR UPDATE`, email).Scan(&digest, &expires, &attempts, &rawAcceptance)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", Session{}, domain.Invalid("Код неверен или истёк")
 	}
@@ -75,6 +81,15 @@ func (s *Service) Verify(ctx context.Context, email, code string, reactivate boo
 		}
 		return "", Session{}, domain.Invalid("Код неверен или истёк")
 	}
+	var acceptance Acceptance
+	if len(rawAcceptance) != 0 {
+		if err = json.Unmarshal(rawAcceptance, &acceptance); err != nil {
+			return "", Session{}, err
+		}
+	}
+	if len(requireAcceptance) > 0 && requireAcceptance[0] && !acceptance.valid() {
+		return "", Session{}, domain.Invalid("Запросите новый код, подтвердив согласие и правила")
+	}
 	// A unique email makes concurrent first registrations safe. Temporary nickname
 	// is replaced by the permanent ID nickname before the transaction commits.
 	seed, err := Token()
@@ -92,6 +107,12 @@ func (s *Service) Verify(ctx context.Context, email, code string, reactivate boo
 	}
 	if u.Blocked {
 		return "", Session{}, domain.Forbidden("Аккаунт заблокирован")
+	}
+	if acceptance.valid() {
+		_, err = tx.Exec(ctx, `INSERT INTO user_legal_acceptances(user_id,consent_version,rules_version,consent_text,rules_text,accepted_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, u.ID, acceptance.ConsentVersion, acceptance.RulesVersion, acceptance.ConsentText, acceptance.RulesText, acceptance.AcceptedAt)
+		if err != nil {
+			return "", Session{}, err
+		}
 	}
 
 	if !u.NicknameChanged {

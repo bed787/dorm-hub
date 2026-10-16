@@ -45,7 +45,7 @@ func (a *API) maintenanceGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead
-		if readOnly && (path == "/health" || path == "/ready" || strings.HasPrefix(path, "/assets/") || path == "/admin-login" || path == "/api/auth/bootstrap") {
+		if readOnly && (path == "/health" || path == "/ready" || strings.HasPrefix(path, "/assets/") || path == "/admin-login" || path == "/api/auth/bootstrap" || path == "/rules" || path == "/privacy" || path == "/consent" || path == "/robots.txt" || path == "/sitemap.xml") {
 			next.ServeHTTP(w, r)
 			return
 		}

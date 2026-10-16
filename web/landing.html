@@ -1,0 +1,51 @@
+{{define "landing"}}
+<div class="public-page" id="landing">
+  <a class="public-skip" href="#about">К содержимому</a>
+  {{template "public-header" .}}
+  <main>
+    <section class="public-hero public-width" id="about">
+      <div class="public-hero-copy">
+        <p class="public-kicker">Студентам {{.Campus}} · {{.City}}</p>
+        <h1>Нужное —<br>у кого-то <em>рядом.</em></h1>
+        <p class="public-lead">Dorm Hub — студенческая доска объявлений {{.Campus}}. Продавай вещи, находи нужное и предлагай помощь соседям по общежитию.</p>
+        <div class="public-actions"><a class="button" href="/login">Войти по почте <span aria-hidden="true">↗</span></a><a class="public-text-link" href="#how">Как это работает ↓</a></div>
+        <p class="public-caption">Без пароля и платы за размещение. Объявления и контакты доступны после входа.</p>
+      </div>
+      <aside class="public-board" aria-label="Что можно найти на площадке">
+        <div class="public-board-heading"><span>Всё для жизни в общаге</span><span aria-hidden="true">↗</span></div>
+        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">◇</span><div><h2>Вещи и техника</h2><p>От настольной лампы до монитора</p></div></div>
+        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">▤</span><div><h2>Учёба</h2><p>Учебники, материалы, репетиторство</p></div></div>
+        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">✦</span><div><h2>Услуги и помощь</h2><p>Предложи свои навыки или найди помощь</p></div></div>
+        <div class="public-board-foot">От студентов — студентам.</div>
+      </aside>
+    </section>
+    <section class="public-section public-width" id="how" aria-labelledby="how-title">
+      <div class="public-section-heading"><p class="public-kicker">Всё просто</p><h2 id="how-title">От объявления до встречи</h2></div>
+      <ol class="public-steps">
+        <li><span class="public-step-number">01</span><h3>Войди по почте</h3><p>Получи одноразовый код на студенческую почту или другой разрешённый адрес.</p></li>
+        <li><span class="public-step-number">02</span><h3>Найди или предложи</h3><p>Посмотри ленту или создай объявление. Перед публикацией его проверит модератор.</p></li>
+        <li><span class="public-step-number">03</span><h3>Договорись напрямую</h3><p>Свяжись с автором через Telegram или VK. Оплату и встречу вы обсуждаете самостоятельно.</p></li>
+      </ol>
+    </section>
+    <section class="public-section public-width public-faq" id="faq" aria-labelledby="faq-title">
+      <div class="public-section-heading"><p class="public-kicker">Есть вопрос?</p><h2 id="faq-title">Разберёмся</h2></div>
+      <div class="public-faq-list">
+        <details><summary>Что такое Dorm Hub?</summary><p>Это некоммерческая площадка объявлений для студентов {{.Campus}}. Здесь можно продать, обменять или отдать вещи, найти учебники, предложить услуги и попросить о помощи.</p></details>
+        <details><summary>Кто может войти?</summary><p>Участники с разрешённой студенческой почтой и адресами, которым администрация отдельно открыла доступ. Вход — по коду из письма, придумывать пароль не нужно.</p></details>
+        <details><summary>Почему объявления не видны без входа?</summary><p>Площадка предназначена для студенческого сообщества. Профили, объявления, фотографии и контакты доступны только после авторизации.</p></details>
+        <details><summary>Размещение платное?</summary><p>Нет. Dorm Hub не берёт плату за размещение и не принимает оплату за сделки. Покупатель и продавец договариваются напрямую.</p></details>
+        <details><summary>Когда появится моё объявление?</summary><p>После ручной проверки. Если объявление отклонят, оно вернётся в архив с причиной. После редактирования опубликованное объявление тоже проходит проверку заново. Точного срока проверки мы не обещаем.</p></details>
+        <details><summary>Нужно ли указывать Telegram или VK?</summary><p>В профиле контакты необязательны. Для отправки объявления на проверку нужен хотя бы один контакт, чтобы с тобой могли связаться. Его можно указать прямо при создании объявления. Указывай только собственные контакты.</p></details>
+        <details><summary>Что нельзя публиковать?</summary><p>Алкоголь, табак и вейпы, наркотики, незаконные товары и услуги, «мёртвые души», мошеннические предложения и чужие данные. Полный список и порядок модерации — в <a href="/rules">правилах сайта</a>.</p></details>
+        <details><summary>Можно ли удалить аккаунт и данные?</summary><p>Да, в настройках профиля с подтверждением по почте. Удаляются аккаунт, контакты, объявления, фотографии и связанные записи, включая подтверждения согласия. Общий обезличенный счётчик завершённых сделок сохраняется без связи с тобой.</p></details>
+        <details><summary>Куда сообщить о нарушении или чужих контактах?</summary><p>В объявлении и профиле есть кнопка жалобы. Если аккаунта нет или войти не получается, {{template "support-inline" .}}. Ссылка на объявление и описание проблемы помогут разобраться.</p></details>
+      </div>
+    </section>
+    <section class="public-width public-final"><div><p class="public-kicker">Соседи уже ближе</p><h2>Найди то, что пригодится.</h2></div><a class="button" href="/login">Открыть площадку ↗</a></section>
+  </main>
+  {{template "public-footer" .}}
+</div>
+{{end}}
+{{define "public-header"}}<header class="public-header public-width"><a href="/" class="public-brand" aria-label="Dorm Hub — главная"><img src="/assets/icon.svg" alt="" width="72" height="64"><span>dorm-hub</span></a><nav aria-label="О площадке"><a href="/#how">Как это работает</a><a href="/#faq">FAQ</a><button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">◐</button><a class="button plain" href="/login">Войти</a></nav></header>{{end}}
+{{define "support-inline"}}{{if .TelegramURL}}напиши администрации в <a href="{{.TelegramURL}}" target="_blank" rel="noopener noreferrer">Telegram ({{.SupportTelegram}})</a>{{else}}обратись к администрации площадки{{end}}{{end}}
+{{define "public-footer"}}<footer class="public-footer public-width"><div><strong>Dorm Hub</strong><p>Независимый студенческий проект.<br>Не является официальным сервисом университета.</p></div><nav aria-label="Документы"><a href="/rules">Правила сайта</a><a href="/privacy">Политика обработки ПД</a><a href="/consent">Согласие на обработку ПД</a>{{if .TelegramURL}}<a href="{{.TelegramURL}}" target="_blank" rel="noopener noreferrer">Связаться в Telegram</a>{{end}}</nav></footer>{{end}}
