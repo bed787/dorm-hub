@@ -55,6 +55,15 @@ func (a *API) requestLoginCode(w http.ResponseWriter, r *http.Request, adminOnly
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
+	// Administrator recovery is restricted to configured/existing administrators.
+	// It is not the public account registration flow and records no fake consent.
+	if adminOnly {
+		if err := a.auth.Request(r.Context(), in.Email); err != nil {
+			return err
+		}
+		respond(w, 200, map[string]bool{"sent": true})
+		return nil
+	}
 	documents := web.CurrentLegal()
 	if !in.Consent || !in.Rules {
 		return domain.Invalid("Подтвердите согласие на обработку данных и примите правила сайта")
@@ -92,7 +101,7 @@ func (a *API) verifyLoginCode(w http.ResponseWriter, r *http.Request, adminOnly 
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
-	token, session, err := a.auth.Verify(r.Context(), in.Email, in.Code, in.Reactivate, true)
+	token, session, err := a.auth.Verify(r.Context(), in.Email, in.Code, in.Reactivate, !adminOnly)
 	if err != nil {
 		return err
 	}

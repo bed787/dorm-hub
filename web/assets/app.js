@@ -74,7 +74,7 @@ function applySiteSettings(settings) {
   state.maintenanceReason = settings.reason || "";
 }
 function brand() {
-  return `<a class="brand" href="${state.me ? '/app#/feed' : '/'}" aria-label="Dorm Hub — ${state.me ? 'лента' : 'главная'}"><img src="/assets/brand.png" alt="Dorm Hub" width="1990" height="1054"></a>`;
+  return `<a class="brand" href="${state.me ? '/app#/feed' : '/'}" aria-label="Dorm Hub — ${state.me ? 'лента' : 'главная'}">${document.getElementById("brand-mark").innerHTML}</a>`;
 }
 function authPath(action) {
   return state.adminLogin ? "/auth/admin/" + action : "/auth/" + action;
@@ -679,13 +679,13 @@ function loginView(code = false) {
     <form id="${code ? "code-form" : "login-form"}">
       ${code ? `<label class="field"><span>Код из письма</span><input class="code-input" name="code" maxlength="6" minlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus></label>` : `
       <label class="field"><span>Почта</span><input name="email" type="email" maxlength="254" autocomplete="email" value="${h(state.email)}" placeholder="${state.adminLogin ? "Почта администратора" : "stXXXXXX@student.spbu.ru"}" required autofocus></label>
-      <label class="legal-check"><input type="checkbox" name="consent" required><span>Даю <a href="/consent" target="_blank" rel="noopener">согласие на обработку персональных данных</a>.</span></label>
-      <label class="legal-check"><input type="checkbox" name="rules" required><span>Принимаю <a href="/rules" target="_blank" rel="noopener">правила сайта</a>.</span></label>`}
+      ${state.adminLogin ? "" : `<label class="legal-check"><input type="checkbox" name="consent" required><span>Даю <a href="/consent" target="_blank" rel="noopener">согласие на обработку персональных данных</a>.</span></label>
+      <label class="legal-check"><input type="checkbox" name="rules" required><span>Принимаю <a href="/rules" target="_blank" rel="noopener">правила сайта</a>.</span></label>`}`}
       <button class="button" type="submit">${code ? "Войти" : "Получить код"}</button>
     </form>
     ${code ? `<div class="row between" style="margin-top:18px"><button class="small muted" data-action="login-back">Изменить почту</button><button class="small muted" data-action="resend" id="resend-button">Отправить ещё раз</button></div>` : ""}
-    <div class="login-note">Доступ к объявлениям и профилям открыт только авторизованным участникам. Твою почту другие студенты не увидят.</div>
-    <p class="login-legal">Как используются данные и как их удалить — в <a href="/privacy" target="_blank" rel="noopener">политике обработки ПД</a>.</p>
+    ${state.adminLogin ? "" : `<div class="login-note">Доступ к объявлениям и профилям открыт только авторизованным участникам. Твою почту другие студенты не увидят.</div>
+    <p class="login-legal">Как используются данные и как их удалить — в <a href="/privacy" target="_blank" rel="noopener">политике обработки ПД</a>.</p>`}
     </div></section></main>`;
   tick();
 }
@@ -967,9 +967,9 @@ document.addEventListener("submit", async (event) => {
   }
   await withBusy(form, async () => {
     if (form.id === "login-form") {
-      if (data.get("consent") !== "on" || data.get("rules") !== "on") throw new Error("Подтверди согласие и правила");
+      if (!state.adminLogin && (data.get("consent") !== "on" || data.get("rules") !== "on")) throw new Error("Подтверди согласие и правила");
       state.email = data.get("email").trim();
-      state.loginAcceptance = {consent: true, rules: true, ...state.legal};
+      state.loginAcceptance = state.adminLogin ? null : {consent: true, rules: true, ...state.legal};
       await api(authPath("request"), {
         method: "POST",
         body: { email: state.email, ...state.loginAcceptance },

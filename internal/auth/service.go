@@ -71,8 +71,8 @@ func (a Acceptance) valid() bool {
 	return len(a.ConsentVersion) == 64 && len(a.RulesVersion) == 64 && a.ConsentText != "" && a.RulesText != "" && !a.AcceptedAt.IsZero()
 }
 
-// Request is the internal entry point used by service consumers. HTTP uses
-// RequestWithAcceptance and verifies the current versions before any email write.
+// Request is used internally and for restricted administrator recovery. Public
+// HTTP registration uses RequestWithAcceptance with the current document versions.
 func (s *Service) Request(ctx context.Context, email string) error {
 	return s.request(ctx, email, nil)
 }

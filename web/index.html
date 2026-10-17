@@ -9,7 +9,7 @@
 <script src="/assets/theme.js?v={{assetVersion}}"></script>
 <link rel="stylesheet" href="/assets/app.css?v={{assetVersion}}"><link rel="stylesheet" href="/assets/public.css?v={{assetVersion}}"><script src="/assets/utils.js?v={{assetVersion}}" defer></script><script src="/assets/requests.js?v={{assetVersion}}" defer></script><script src="/assets/selects.js?v={{assetVersion}}" defer></script><script src="/assets/editor-store.js?v={{assetVersion}}" defer></script><script src="/assets/app.js?v={{assetVersion}}" defer></script>
 </head>
-<body><div id="app">{{if .Landing}}{{template "landing" .}}{{else}}<div class="boot" role="status">Открываем Dorm Hub…</div>{{end}}</div>
+<body><template id="brand-mark">{{brand}}</template><div id="app">{{if .Landing}}{{template "landing" .}}{{else}}<div class="boot" role="status">Открываем Dorm Hub…</div>{{end}}</div>
 {{if not .Landing}}<template id="public-landing">{{template "landing" .}}</template>{{end}}
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>

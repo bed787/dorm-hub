@@ -31,7 +31,19 @@ var assetVersion = func() string {
 	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }()
 
-var pageFunctions = template.FuncMap{"assetVersion": func() string { return assetVersion }}
+// Only a trusted, embedded source asset is inserted as markup. It uses
+// currentColor so the wordmark follows the selected light or dark theme.
+var brandMarkup = func() template.HTML {
+	data, err := files.ReadFile("assets/brand.svg")
+	if err != nil {
+		panic(err)
+	}
+	return template.HTML(data)
+}()
+var pageFunctions = template.FuncMap{
+	"assetVersion": func() string { return assetVersion },
+	"brand":        func() template.HTML { return brandMarkup },
+}
 var maintenancePage = template.Must(template.New("maintenance.html").Funcs(pageFunctions).ParseFS(files, "maintenance.html"))
 var publicPages = template.Must(template.New("index.html").Funcs(pageFunctions).ParseFS(files, "index.html", "landing.html", "document.html", "legal.html"))
 

@@ -22,6 +22,7 @@ function appHarness(responder) {
   const context = vm.createContext({
     DormHubUtils: utils, DormHubRequests: require('../web/assets/requests.js'), Blob, FormData, URL: ObjectURLs, URLSearchParams,
     document: {
+      getElementById(id) { return id === "brand-mark" ? {innerHTML: '<svg class="brand-mark"></svg>'} : null; },
       querySelector(selector) {
         return {'#app': app, '#dialog': dialog, '#toast': toast, '#view': view}[selector] || null;
       },
@@ -37,8 +38,8 @@ function appHarness(responder) {
     },
   });
   const source = fs.readFileSync(path.join(__dirname, '../web/assets/app.js'), 'utf8');
-  vm.runInContext(source + '\n globalThis.workflows = {state, saveListing, queuePhotos, releasePending, profileView, draftHasContent, statusBadge, changeSavedPhoto, captureEditor, enterApp, authPath};', context);
-  return {...context.workflows, context, location, revoked, listeners, view};
+  vm.runInContext(source + '\n globalThis.workflows = {state, saveListing, queuePhotos, releasePending, profileView, draftHasContent, statusBadge, changeSavedPhoto, captureEditor, enterApp, authPath, loginView};', context);
+  return {...context.workflows, context, location, revoked, listeners, view, app};
 }
 function response(data) {
   return {ok: true, json: async () => ({data})};
@@ -376,4 +377,18 @@ test('login keeps the requested listing and administrator entry chooses moderati
  assert.equal(harness.authPath('request'),'/auth/admin/request');
  harness.state.adminLogin=false;
  assert.equal(harness.authPath('request'),'/auth/request');
+});
+
+
+test('administrator login omits public registration checks and copy', () => {
+ const harness = appHarness(() => response({}));
+ harness.state.adminLogin = true;
+ harness.loginView();
+ assert.match(harness.app.innerHTML, /Вход администратора/);
+ assert.doesNotMatch(harness.app.innerHTML, /name="(?:consent|rules)"|login-note|login-legal|brand\.png/);
+ assert.match(harness.app.innerHTML, /<svg class="brand-mark"/);
+ harness.state.adminLogin = false;
+ harness.loginView();
+ assert.match(harness.app.innerHTML, /name="consent" required/);
+ assert.match(harness.app.innerHTML, /name="rules" required/);
 });

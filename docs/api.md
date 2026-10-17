@@ -13,7 +13,7 @@ localhost или частный/loopback/link-local IP; схема и порт �
 | GET /api/auth/bootstrap | Гостевой CSRF и версии согласия/правил |
 | POST /api/auth/request | Код входа: `{email,consent,rules,consent_version,rules_version}` |
 | POST /api/auth/verify | Вход: `{email,code}`; совместимое поле reactivate игнорируется |
-| POST /api/auth/admin/request | Код только для почты администратора; те же поля подтверждения |
+| POST /api/auth/admin/request | Код только для почты администратора: `{email}`; без флажков согласия и правил |
 | POST /api/auth/admin/verify | Вход администратора: `{email,code}`; роль проверяется до создания сессии |
 | POST /api/auth/logout | Завершить текущую сессию |
 | GET /api/me | Свой профиль, email и CSRF |

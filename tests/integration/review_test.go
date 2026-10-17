@@ -143,7 +143,11 @@ func TestDedicatedAdministratorLoginChecksRoleBeforeSending(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, email := range []string{"admin@students.example", "otheradmin@students.example"} {
-		check(reviewRequest(handler, "POST", "/api/auth/admin/request", legalRequestBody(email), ""), 200)
+		check(reviewRequest(handler, "POST", "/api/auth/admin/request", `{"email":"`+email+`"}`, ""), 200)
+		// An administrator recovery OTP cannot register through the public
+		// endpoint without a real acceptance, and no acceptance is fabricated.
+		verifyBody := `{"email":"` + email + `","code":"` + mail.code + `"}`
+		check(reviewRequest(handler, "POST", "/api/auth/verify", verifyBody, ""), 400)
 		w := reviewRequest(handler, "POST", "/api/auth/admin/verify", `{"email":"`+email+`","code":"`+mail.code+`"}`, "")
 		check(w, 200)
 		var token string
@@ -159,6 +163,9 @@ func TestDedicatedAdministratorLoginChecksRoleBeforeSending(t *testing.T) {
 			t.Fatal("administrator cookie missing")
 		}
 		check(reviewRequest(handler, "GET", "/api/admin/site-settings", "", token), 200)
+	}
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM user_legal_acceptances a JOIN users u ON u.id=a.user_id WHERE u.is_admin`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("administrator recovery fabricated a legal acceptance", count, err)
 	}
 	if _, err := db.Exec(ctx, `UPDATE users SET blocked=true WHERE email='admin@students.example'`); err != nil {
 		t.Fatal(err)

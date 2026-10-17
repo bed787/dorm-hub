@@ -263,11 +263,14 @@
   font-size: 13px;
   line-height: 1.55;
   margin-block: 16px;
+  align-items: start;
   cursor: pointer;
 }
-.legal-check input {
+.legal-check input[type="checkbox"] {
   width: 18px;
   height: 18px;
+  min-height: 18px;
+  align-self: start;
   margin: 2px 0 0;
   padding: 0;
   accent-color: var(--accent-solid);
@@ -370,7 +373,7 @@
   width: var(--brand-width);
   max-width: 100%;
 }
-.public-brand img {
+.public-brand .brand-mark {
   display: block;
   width: 100%;
   height: auto;
