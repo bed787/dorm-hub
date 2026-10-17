@@ -392,3 +392,123 @@ test('administrator login omits public registration checks and copy', () => {
  assert.match(harness.app.innerHTML, /name="consent" required/);
  assert.match(harness.app.innerHTML, /name="rules" required/);
 });
+
+function emptyDraftFields() {
+  const data = fields();
+  for (const key of ['title', 'description', 'category', 'location', 'telegram', 'vk']) data.set(key, '');
+  return data;
+}
+function rejectedRequest(status, code, message) {
+  return {ok: false, status, json: async () => ({error: {code, message}})};
+}
+
+test('empty draft attempts stay local and filling the form permits saving and submission', async () => {
+  const calls = [];
+  const h = appHarness((url, options) => {
+    const body = options.body && JSON.parse(options.body);
+    calls.push({url, method: options.method, body});
+    if (url === '/api/listings' && !body.title.trim()) return rejectedRequest(400, 'invalid', 'Пустой черновик не сохраняется');
+    return response({id: 7, photos: [], status: url.endsWith('/status') ? 'pending' : 'archived'});
+  });
+  for (let i = 0; i < 35; i++) await assert.rejects(h.saveListing({}, emptyDraftFields(), 'draft'));
+  assert.equal(calls.length, 0, 'empty drafts must not consume the server request budget');
+  assert.equal(h.state.createAttempt, null);
+  const minimal = emptyDraftFields(); minimal.set('title', 'Л');
+  await h.saveListing({}, minimal, 'autosave');
+  await h.saveListing({}, fields(), 'submit');
+  assert.deepEqual(calls.map(c => [c.url, c.method]), [
+    ['/api/listings', 'POST'], ['/api/listings/7', 'PUT'], ['/api/listings/7/status', 'POST'],
+  ]);
+  assert.equal(calls[0].body.title, 'Л');
+  assert.equal(calls[1].body.title, 'Настольная лампа');
+  assert.equal(h.state.createAttempt, null);
+});
+
+test('a rejected first create releases its body and clears the persisted retry attempt', async () => {
+  const calls = [], records = [];
+  const h = appHarness((url, options) => {
+    calls.push({url, body: JSON.parse(options.body), key: options.headers['Idempotency-Key']});
+    if (calls.length === 1) return rejectedRequest(400, 'invalid', 'Выберите категорию');
+    return response({id: 8, photos: [], status: 'archived'});
+  });
+  h.context.records = records;
+  vm.runInContext('editorStore.put = async (user, record) => records.push(record)', h.context);
+  h.state.editor = {user: 1, dirty: 1, saved: 0, work: Promise.resolve(), storeWork: Promise.resolve()};
+  const invalid = fields(); invalid.set('category', 'invalid');
+  await assert.rejects(h.saveListing({}, invalid, 'autosave'), /Выберите категорию/);
+  assert.equal(h.state.createAttempt, null);
+  assert.equal(records.at(-1).attempt, null, 'reload must not restore a rejected body');
+  await h.saveListing({}, fields(), 'autosave');
+  assert.notEqual(calls[0].key, calls[1].key);
+  assert.equal(calls[1].body.category, 'things');
+  assert.equal(h.state.formListing.id, 8);
+});
+
+test('an old empty retry restored from the browser cannot replace filled fields', async () => {
+  const calls = [];
+  const h = appHarness((url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({body, key: options.headers['Idempotency-Key']});
+    if (!body.title.trim()) return rejectedRequest(400, 'invalid', 'Пустой черновик не сохраняется');
+    return response({id: 9, photos: [], status: 'archived'});
+  });
+  const stale = {key: 'a'.repeat(64), input: Object.fromEntries(emptyDraftFields())};
+  h.state.createAttempt = stale;
+  await h.saveListing({}, fields(), 'autosave');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.title, 'Настольная лампа');
+  assert.notEqual(calls[0].key, stale.key);
+});
+
+test('recovery throttled after an uncertain response keeps the original create key', async () => {
+  const keys = [], created = new Map();
+  const h = appHarness((url, options) => {
+    assert.equal(url, '/api/listings');
+    const key = options.headers['Idempotency-Key']; keys.push(key);
+    if (keys.length === 2) return rejectedRequest(429, 'rate_limit', 'Повторите позже');
+    if (!created.has(key)) created.set(key, {id: 10, photos: [], status: 'archived'});
+    if (keys.length === 1) return failure('Ответ сервера потерялся');
+    return response(created.get(key));
+  });
+  await assert.rejects(h.saveListing({}, fields(), 'autosave'), /Ответ сервера потерялся/);
+  const original = h.state.createAttempt;
+  await assert.rejects(h.saveListing({}, fields(), 'autosave'), /Повторите позже/);
+  assert.equal(h.state.createAttempt, original);
+  await h.saveListing({}, fields(), 'autosave');
+  assert.equal(new Set(keys).size, 1);
+  assert.equal(created.size, 1);
+});
+
+test('a delayed rejection cannot clear another editor retry attempt', async () => {
+  const entered = deferred(), reply = deferred();
+  const h = appHarness(async () => {
+    entered.resolve();
+    await reply.promise;
+    return rejectedRequest(400, 'invalid', 'Некорректное объявление');
+  });
+  const saving = h.saveListing({}, fields(), 'autosave');
+  await entered.promise;
+  h.state.seq++;
+  const next = {key: 'b'.repeat(64), input: {title: 'Другое объявление'}};
+  h.state.createAttempt = next;
+  reply.resolve();
+  await assert.rejects(saving, /Некорректное объявление/);
+  assert.equal(h.state.createAttempt, next);
+});
+
+test('a draft with only a photo waits for processing before the empty check', async () => {
+  const calls = [];
+  const h = appHarness((url, options) => {
+    calls.push(url);
+    if (url.endsWith('/photos')) return response({id: 'photo'});
+    assert.equal(JSON.parse(options.body).has_photos, true);
+    return response({id: 11, photos: [], status: 'archived'});
+  });
+  const processing = deferred();
+  h.state.photoWork = processing.promise.then(() => h.state.pending.push(photo('one')));
+  const saving = h.saveListing({}, emptyDraftFields(), 'draft');
+  processing.resolve();
+  await saving;
+  assert.deepEqual(calls, ['/api/listings', '/api/listings/11/photos']);
+  assert.equal(h.state.formListing.photos.length, 1);
+});

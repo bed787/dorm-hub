@@ -832,6 +832,14 @@ async function saveListing(form, data, mode = "submit") {
   };
   if (input.price_mode === "price" && input.price_minor === null)
     input.price_mode = "unset";
+  // Older browser backups may contain a rejected empty creation. Such a
+  // request cannot have created a listing, so it must not replace new edits.
+  if (
+    !previous &&
+    state.createAttempt &&
+    !draftHasContent(state.createAttempt.input, [], null)
+  )
+    state.createAttempt = null;
   const freshAttempt = !previous && !state.createAttempt;
   const attempt = previous
     ? null
@@ -842,6 +850,13 @@ async function saveListing(form, data, mode = "submit") {
   }
   await state.photoWork;
   if (freshAttempt || previous) input.has_photos = pending.length > 0;
+  if (freshAttempt && !draftHasContent(input, pending, null)) {
+    if (seq === state.seq && state.createAttempt === attempt) {
+      state.createAttempt = null;
+      if (state.editor) await storeEditor(state.editor);
+    }
+    throw new Error("Добавь название, описание или фотографию перед сохранением.");
+  }
   if (freshAttempt && seq === state.seq && state.editor)
     await storeEditor(state.editor);
   let saved;
@@ -851,11 +866,26 @@ async function saveListing(form, data, mode = "submit") {
       body: input,
     });
   } else {
-    saved = await api("/listings", {
-      method: "POST",
-      body: attempt.input,
-      idempotencyKey: attempt.key,
-    });
+    try {
+      saved = await api("/listings", {
+        method: "POST",
+        body: attempt.input,
+        idempotencyKey: attempt.key,
+      });
+    } catch (e) {
+      // Release a definitively rejected first request. Recoveries after a lost
+      // response keep their key: an earlier request may already have committed.
+      if (
+        freshAttempt &&
+        [400, 401, 403, 413, 422, 429].includes(e.status) &&
+        seq === state.seq &&
+        state.createAttempt === attempt
+      ) {
+        state.createAttempt = null;
+        if (state.editor) await storeEditor(state.editor);
+      }
+      throw e;
+    }
     if (seq === state.seq) {
       state.formListing = saved;
       state.createAttempt = null;
@@ -1490,15 +1520,16 @@ function scheduleAutosave() {
     700,
   );
 }
-function draftHasContent(input) {
+function draftHasContent(input, pending = state.pending, listing = state.formListing) {
   return !!(
-    input?.title.trim() ||
-    input?.description.trim() ||
+    input?.title?.trim() ||
+    input?.description?.trim() ||
     input?.category ||
     input?.location ||
     input?.price_minor != null ||
-    state.pending.length ||
-    state.formListing
+    input?.has_photos ||
+    pending.length ||
+    listing
   );
 }
 async function autosave() {
