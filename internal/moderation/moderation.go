@@ -27,6 +27,7 @@ type Report struct {
 }
 type Account struct {
 	ID        int64     `json:"id"`
+	Email     string    `json:"email"`
 	Nickname  string    `json:"nickname"`
 	Active    bool      `json:"active"`
 	Blocked   bool      `json:"blocked"`
@@ -118,7 +119,7 @@ func (s *Service) Accounts(ctx context.Context, offset int) ([]Account, error) {
 	if offset < 0 {
 		return nil, domain.Invalid("Неверная страница")
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,nickname,active,blocked,is_admin,created_at FROM users ORDER BY id DESC LIMIT 50 OFFSET $1`, offset)
+	rows, err := s.db.Query(ctx, `SELECT id,email,nickname,active,blocked,is_admin,created_at FROM users ORDER BY id DESC LIMIT 50 OFFSET $1`, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +127,7 @@ func (s *Service) Accounts(ctx context.Context, offset int) ([]Account, error) {
 	items := []Account{}
 	for rows.Next() {
 		var x Account
-		if err = rows.Scan(&x.ID, &x.Nickname, &x.Active, &x.Blocked, &x.IsAdmin, &x.CreatedAt); err != nil {
+		if err = rows.Scan(&x.ID, &x.Email, &x.Nickname, &x.Active, &x.Blocked, &x.IsAdmin, &x.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, x)
