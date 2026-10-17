@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"embed"
 	"encoding/json"
@@ -103,7 +104,15 @@ func CurrentLegal() LegalSnapshot { return snapshot }
 type pageData struct {
 	siteContent
 	Page, Title, Description, Canonical string
-	Landing                             bool
+	Landing, Authenticated              bool
+}
+
+// authenticatedPageKey is only a presentation hint set after a real session
+// check by httpapi. It never authorizes an API operation.
+type authenticatedPageKey struct{}
+
+func ForAuthenticatedUser(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), authenticatedPageKey{}, true))
 }
 
 func Handler() http.Handler {
@@ -153,6 +162,7 @@ func HandlerFor(baseURL string) http.Handler {
 		data := pageData{siteContent: site, Canonical: baseURL + path, Landing: path == "/" || path == "/about",
 			Title:       "Dorm Hub — студенческая барахолка " + site.Campus,
 			Description: "Объявления студентов " + site.Campus + ": учебники, техника, вещи для общежития и взаимопомощь. Размещай предложения и связывайся напрямую."}
+		data.Authenticated, _ = r.Context().Value(authenticatedPageKey{}).(bool)
 		name := "index.html"
 		switch path {
 		case "/about":

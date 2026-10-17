@@ -79,7 +79,28 @@ func TestReloadAndMaintenanceKeepMemberSession(t *testing.T) {
 	if w.Header().Get("Location") != "/app" || w.Header().Get("Cache-Control") != "no-store" || strings.Contains(w.Body.String(), `id="landing"`) {
 		t.Fatal("authenticated HTML flashed the landing")
 	}
-	check(reviewRequest(handler, "GET", "/about", "", token), 200)
+	for _, path := range []string{"/about", "/rules", "/privacy", "/consent"} {
+		w = reviewRequest(handler, "GET", path, "", token)
+		check(w, 200)
+		if !strings.Contains(w.Body.String(), `href="/app#/feed">В ленту</a>`) || strings.Contains(w.Body.String(), `href="/login"`) {
+			t.Fatal("public page forgot the existing session", path, w.Body.String())
+		}
+		if w.Header().Get("Cache-Control") != "no-store" || len(w.Result().Cookies()) != 0 {
+			t.Fatal("public page caches or replaces a session", path)
+		}
+		head := reviewRequest(handler, "HEAD", path, "", token)
+		check(head, 200)
+		if head.Body.Len() != 0 {
+			t.Fatal("public HEAD has a body", path)
+		}
+		for _, guest := range []string{"", strings.Repeat("f", 64)} {
+			w = reviewRequest(handler, "GET", path+"?authenticated=true", "", guest)
+			check(w, 200)
+			if !strings.Contains(w.Body.String(), `href="/login">Войти</a>`) || strings.Contains(w.Body.String(), `href="/app#/feed"`) {
+				t.Fatal("guest received authenticated navigation", path)
+			}
+		}
+	}
 	check(reviewRequest(handler, "GET", "/api/me", "", token), 200)
 	if _, err = db.Exec(ctx, `UPDATE site_settings SET maintenance=true,maintenance_reason='Проверка'`); err != nil {
 		t.Fatal(err)

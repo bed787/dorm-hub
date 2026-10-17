@@ -8,8 +8,8 @@
         <p class="public-kicker">Студентам {{.Campus}} · {{.City}}</p>
         <h1>Объявления<br>студентов {{.Campus}}</h1>
         <p class="public-lead">Dorm Hub — студенческая доска объявлений {{.Campus}}. Продажа и обмен вещей, учебные материалы, услуги и помощь в общежитии.</p>
-        <div class="public-actions"><a class="button" href="/login">Войти по почте <span aria-hidden="true">↗</span></a><a class="public-text-link" href="#how">Как это работает ↓</a></div>
-        <p class="public-caption">Без пароля и платы за размещение. Объявления и контакты доступны после входа.</p>
+        <div class="public-actions"><a class="button" href="{{if .Authenticated}}/app#/feed{{else}}/login{{end}}">{{if .Authenticated}}Открыть объявления{{else}}Войти по почте{{end}} <span aria-hidden="true">↗</span></a><a class="public-text-link" href="#how">Как это работает ↓</a></div>
+        <p class="public-caption">{{if .Authenticated}}Размещение объявлений бесплатно.{{else}}Без пароля и платы за размещение. Объявления и контакты доступны после входа.{{end}}</p>
       </div>
       <aside class="public-board" aria-label="Что можно найти на площадке">
         <div class="public-board-heading"><span>Категории объявлений</span><span aria-hidden="true">↗</span></div>
@@ -46,6 +46,6 @@
   {{template "public-footer" .}}
 </div>
 {{end}}
-{{define "public-header"}}<header class="public-header public-width"><a href="/" class="public-brand" aria-label="Dorm Hub — главная">{{brand}}</a><nav aria-label="О площадке"><a href="/about#how">Как это работает</a><a href="/about#faq">FAQ</a><button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">◐</button><a class="button plain" href="/login">Войти</a></nav></header>{{end}}
+{{define "public-header"}}<header class="public-header public-width"><a href="/" class="public-brand" aria-label="Dorm Hub — главная">{{brand}}</a><nav aria-label="О площадке"><a href="/about#how">Как это работает</a><a href="/about#faq">FAQ</a><button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">◐</button><a class="button plain" href="{{if .Authenticated}}/app#/feed{{else}}/login{{end}}">{{if .Authenticated}}В ленту{{else}}Войти{{end}}</a></nav></header>{{end}}
 {{define "support-inline"}}{{if .TelegramURL}}напиши администрации в <a href="{{.TelegramURL}}" target="_blank" rel="noopener noreferrer">Telegram ({{.SupportTelegram}})</a>{{else}}обратись к администрации площадки{{end}}{{end}}
 {{define "public-footer"}}<footer class="public-footer public-width"><div><strong>Dorm Hub</strong><p>Независимый студенческий проект.<br>Не является официальным сервисом университета.</p></div><nav aria-label="Документы"><a href="/rules">Правила сайта</a><a href="/privacy">Политика обработки ПД</a><a href="/consent">Согласие на обработку ПД</a>{{if .TelegramURL}}<a href="{{.TelegramURL}}" target="_blank" rel="noopener noreferrer">Связаться в Telegram</a>{{end}}</nav></footer>{{end}}

@@ -8,7 +8,7 @@
 </head><body class="public-page">
 <a class="public-skip" href="#document">К содержимому</a>{{template "public-header" .}}
 <main class="public-document public-width" id="document">
-<a class="public-back" href="/">← На главную</a>
+<a class="public-back" href="{{if .Authenticated}}/app#/feed{{else}}/{{end}}">← {{if .Authenticated}}К объявлениям{{else}}На главную{{end}}</a>
 {{if eq .Page "rules"}}{{template "rules" .}}{{else if eq .Page "privacy"}}{{template "privacy" .}}{{else}}{{template "consent" .}}{{end}}
 </main>{{template "public-footer" .}}
 </body></html>
