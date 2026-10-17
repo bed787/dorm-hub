@@ -20,11 +20,12 @@ const state = {
   maintenanceReason: "",
   legal: null,
   loginAcceptance: null,
+  adminLogin: location.pathname === "/admin-login",
 };
 const app = document.querySelector("#app"),
   dialog = document.querySelector("#dialog");
-const landingHTML = document.querySelector("#landing") ? app.innerHTML : "";
-const landingTitle = document.title;
+const landingHTML = document.querySelector("#landing") ? app.innerHTML : document.querySelector("#public-landing")?.innerHTML || "";
+const landingTitle = "Dorm Hub — объявления студентов СПбГУ";
 const categoryIcons = {
   things: "◇",
   study: "▤",
@@ -73,8 +74,16 @@ function applySiteSettings(settings) {
   state.maintenanceReason = settings.reason || "";
 }
 function brand() {
-  return `<a class="brand row" href="${state.me ? '#/feed' : '/'}" aria-label="Dorm Hub — ${state.me ? 'лента' : 'главная'}"><img src="/assets/icon.svg" alt=""><span>dorm-hub</span></a>`;
+  return `<a class="brand" href="${state.me ? '/app#/feed' : '/'}" aria-label="Dorm Hub — ${state.me ? 'лента' : 'главная'}"><img src="/assets/brand.png" alt="Dorm Hub" width="1990" height="1054"></a>`;
 }
+function authPath(action) {
+  return state.adminLogin ? "/auth/admin/" + action : "/auth/" + action;
+}
+function enterApp() {
+  const hash = location.hash?.startsWith("#/") ? location.hash : state.adminLogin && state.me?.is_admin ? "#/admin?tab=site" : "#/feed";
+  history.replaceState(null, "", "/app" + hash);
+}
+
 function themeButton() {
   return '<button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">◐</button>';
 }
@@ -131,7 +140,12 @@ function shell() {
     ["#/settings", "⚙", "Мой профиль"],
   ];
   if (state.me.is_admin) nav.push(["#/admin", "◈", "Модерация"]);
-  app.innerHTML = `<header class="topbar"><div class="row"><button class="mobile-menu" data-action="menu" aria-label="Открыть меню">☰</button>${brand()}</div><span class="deal-total small muted" title="По отметкам участников">Завершено сделок: ${state.completedDeals}</span><form class="search" id="search-form"><span aria-hidden="true">⌕</span><input name="q" placeholder="Поиск объявлений" aria-label="Поиск объявлений" maxlength="200"><button aria-label="Искать">↵</button></form><div class="row">${themeButton()}<a class="button" href="#/new" aria-label="Новое объявление">＋ <span class="new-label">Объявление</span></a><a href="#/settings" class="user-pill row"><div class="avatar">${h(state.me.nickname[0])}</div><span class="small">${h(state.me.nickname)}</span></a></div></header><div class="layout"><aside class="sidebar"><nav class="nav" aria-label="Главное меню">${nav.map(([href, icon, label]) => `<a href="${href}" class="${path === href ? "selected" : ""}"><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`).join("")}</nav><button class="button plain" data-action="logout">Выйти</button><nav class="app-documents" aria-label="О площадке"><a href="/" target="_blank" rel="noopener">О Dorm Hub</a><a href="/rules" target="_blank" rel="noopener">Правила сайта</a><a href="/privacy" target="_blank" rel="noopener">Политика обработки ПД</a><a href="/consent" target="_blank" rel="noopener">Согласие на обработку ПД</a></nav></aside><main class="main" id="view" tabindex="-1"><div class="boot" role="status">Загружаем…</div></main></div>`;
+  app.innerHTML = `<header class="topbar">
+    <div class="row topbar-start"><button class="mobile-menu" data-action="menu" aria-label="Открыть меню" aria-controls="sidebar" aria-expanded="false">☰</button>${brand()}</div>
+    <span class="deal-total small muted" title="По отметкам участников">Завершено сделок: ${state.completedDeals}</span>
+    <form class="search" id="search-form"><span aria-hidden="true">⌕</span><input name="q" placeholder="Поиск объявлений" aria-label="Поиск объявлений" maxlength="200"><button aria-label="Искать">↵</button></form>
+    <div class="row topbar-actions">${themeButton()}<a class="button new-listing" href="#/new" aria-label="Новое объявление"><span aria-hidden="true">＋</span><span class="new-label">Объявление</span></a><a href="#/settings" class="user-pill row" aria-label="Мой профиль"><div class="avatar">${h(state.me.nickname[0])}</div><span class="small">${h(state.me.nickname)}</span></a></div>
+    </header><div class="layout"><aside class="sidebar" id="sidebar"><nav class="nav" aria-label="Главное меню">${nav.map(([href, icon, label]) => `<a href="${href}" class="${path === href ? "selected" : ""}"><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`).join("")}</nav><button class="button plain" data-action="logout">Выйти</button><nav class="app-documents" aria-label="О площадке"><a href="/about" target="_blank" rel="noopener">О Dorm Hub</a><a href="/rules" target="_blank" rel="noopener">Правила сайта</a><a href="/privacy" target="_blank" rel="noopener">Политика обработки ПД</a><a href="/consent" target="_blank" rel="noopener">Согласие на обработку ПД</a></nav></aside><button class="sidebar-backdrop" data-action="menu" aria-label="Закрыть меню" tabindex="-1"></button><main class="main" id="view" tabindex="-1"><div class="boot" role="status">Загружаем…</div></main></div>`;
 }
 function mount(content, seq) {
   if (seq !== state.seq) return;
@@ -658,13 +672,13 @@ async function route() {
   }
 }
 function loginView(code = false) {
-  document.title = "Вход — Dorm Hub";
+  document.title = state.adminLogin ? "Вход администратора — Dorm Hub" : "Вход — Dorm Hub";
   app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel">
-    <a class="login-home" href="/">← О площадке и частые вопросы</a>
-    <h1>${code ? "Код из письма" : "Вход"}</h1><p class="muted">${code ? "Отправили код на " + h(state.email) + "." : "Используй студенческую почту или разрешённый адрес. Пароль не нужен. При первом входе аккаунт создастся автоматически."}</p>
+    <a class="login-home" href="/about">← О площадке и частые вопросы</a>
+    <h1>${code ? "Код из письма" : state.adminLogin ? "Вход администратора" : "Вход"}</h1><p class="muted">${code ? "Код отправлен на " + h(state.email) + "." : state.adminLogin ? "Вход в управление сайтом. Код можно получить только на почту администратора." : "Введи студенческую почту или разрешённый адрес. При первом входе аккаунт создастся автоматически."}</p>
     <form id="${code ? "code-form" : "login-form"}">
       ${code ? `<label class="field"><span>Код из письма</span><input class="code-input" name="code" maxlength="6" minlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required autofocus></label>` : `
-      <label class="field"><span>Почта</span><input name="email" type="email" maxlength="254" autocomplete="email" value="${h(state.email)}" placeholder="stXXXXXX@student.spbu.ru" required autofocus></label>
+      <label class="field"><span>Почта</span><input name="email" type="email" maxlength="254" autocomplete="email" value="${h(state.email)}" placeholder="${state.adminLogin ? "Почта администратора" : "stXXXXXX@student.spbu.ru"}" required autofocus></label>
       <label class="legal-check"><input type="checkbox" name="consent" required><span>Даю <a href="/consent" target="_blank" rel="noopener">согласие на обработку персональных данных</a>.</span></label>
       <label class="legal-check"><input type="checkbox" name="rules" required><span>Принимаю <a href="/rules" target="_blank" rel="noopener">правила сайта</a>.</span></label>`}
       <button class="button" type="submit">${code ? "Войти" : "Получить код"}</button>
@@ -686,9 +700,9 @@ function maintenanceView(reason = state.maintenanceReason) {
   }
   dialog.close();
   document.title = "Технические работы — Dorm Hub";
-  app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>Технические работы</h1><p class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">${h(state.maintenanceReason || "Сайт временно закрыт. Пожалуйста, загляните позже.")}</p><div style="margin-top:24px"><a class="button" href="/">Проверить доступность</a></div><p class="login-legal"><a href="/rules">Правила</a> · <a href="/privacy">Политика обработки ПД</a> · <a href="/consent">Согласие</a></p><p style="margin-top:28px;text-align:right"><a class="small muted" href="/admin-login">Для администратора</a></p></div></section></main>`;
+  app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>Технические работы</h1><p class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">${h(state.maintenanceReason || "Сайт временно недоступен.")}</p><p class="small muted">После завершения работ обновите страницу. Действующие сеансы сохраняются.</p><div style="margin-top:24px"><a class="button" href="/">Проверить доступность</a></div><p class="login-legal"><a href="/rules">Правила</a> · <a href="/privacy">Политика обработки ПД</a> · <a href="/consent">Согласие</a></p><p style="margin-top:28px;text-align:right"><a class="small muted" href="/admin-login">Вход администратора</a></p></div></section></main>`;
 }
-async function guest(showLogin = false) {
+async function guest(showLogin = false, goHome = false) {
   clearTimeout(autosaveTimer);
   state.editor = null;
   releasePending();
@@ -701,14 +715,15 @@ async function guest(showLogin = false) {
   state.guestCSRF = data.csrf;
   state.legal = data.legal;
   state.loginAcceptance = null;
-  if (!showLogin && location.pathname === "/" && landingHTML) {
+  if (goHome) history.replaceState(null, "", "/");
+  state.adminLogin = location.pathname === "/admin-login";
+  if (!showLogin && ["/", "/about"].includes(location.pathname) && !location.hash.startsWith("#/") && landingHTML) {
     app.innerHTML = landingHTML;
     document.title = landingTitle;
-    // Remove a private application route left behind after logout/deletion.
-    if (location.hash.startsWith("#/")) history.replaceState(null, "", "/");
   } else loginView();
 }
 async function initialize() {
+  if (location.pathname === "/about") return;
   state.maintenance = false;
   try {
     const data = await api("/me");
@@ -720,6 +735,7 @@ async function initialize() {
     }
     state.catalog = await api("/catalog");
     await refreshStatistics();
+    enterApp();
     await route();
   } catch (e) {
     if (e.status === 401 || (e.code === "maintenance" && location.pathname === "/admin-login")) {
@@ -954,7 +970,7 @@ document.addEventListener("submit", async (event) => {
       if (data.get("consent") !== "on" || data.get("rules") !== "on") throw new Error("Подтверди согласие и правила");
       state.email = data.get("email").trim();
       state.loginAcceptance = {consent: true, rules: true, ...state.legal};
-      await api("/auth/request", {
+      await api(authPath("request"), {
         method: "POST",
         body: { email: state.email, ...state.loginAcceptance },
         guest: true,
@@ -962,7 +978,7 @@ document.addEventListener("submit", async (event) => {
       state.resendAt = Date.now() + 60000;
       loginView(true);
     } else if (form.id === "code-form") {
-      const result = await api("/auth/verify", {
+      const result = await api(authPath("verify"), {
         method: "POST",
         body: { email: state.email, code: data.get("code"), reactivate: false },
         guest: true,
@@ -972,11 +988,10 @@ document.addEventListener("submit", async (event) => {
       state.csrf = result.csrf;
       if (state.me.is_admin) {
         applySiteSettings(await api("/admin/site-settings"));
-        if (location.pathname === "/admin-login") location.hash = "/admin?tab=site";
       }
       state.catalog = await api("/catalog");
       await refreshStatistics();
-      if (!location.hash || !location.hash.startsWith("#/")) location.hash = "/feed";
+      enterApp();
       await route();
     } else if (form.id === "maintenance-form") {
       const settings = await api("/admin/site-settings", {
@@ -1053,7 +1068,7 @@ document.addEventListener("submit", async (event) => {
       await editorStore.remove(String(user));
       closeDialog();
       state.email = "";
-      await guest();
+      await guest(false, true);
       toast(
         result.files_pending
           ? "Аккаунт удалён. Очистка файлов завершится автоматически."
@@ -1136,17 +1151,16 @@ document.addEventListener("click", async (event) => {
     if (action === "menu") {
       const side = document.querySelector(".sidebar");
       side.classList.toggle("open");
-      button.setAttribute(
-        "aria-expanded",
-        String(side.classList.contains("open")),
-      );
+      document.querySelector(".layout")?.classList.toggle("menu-open", side.classList.contains("open"));
+      document.querySelector(".mobile-menu")?.setAttribute("aria-expanded", String(side.classList.contains("open")));
     } else if (action === "close-dialog") closeDialog();
     else if (action === "initialize") await initialize();
     else if (action === "retry") await route();
     else if (action === "logout") {
       await leaveEditor();
       await api("/auth/logout", { method: "POST" });
-      await guest();
+      state.email = "";
+      await guest(false, true);
     } else if (action === "maintenance-toggle") {
       if (!state.me?.is_admin) return;
       const enabled = value === "true";
@@ -1157,7 +1171,7 @@ document.addEventListener("click", async (event) => {
       if (Date.now() < state.resendAt) return;
       button.disabled = true;
       try {
-        await api("/auth/request", {
+        await api(authPath("request"), {
           method: "POST",
           body: { email: state.email, ...state.loginAcceptance },
           guest: true,
@@ -1254,30 +1268,14 @@ document.addEventListener("click", async (event) => {
       scheduleAutosave();
     } else if (action === "crop") await crop(Number(index));
     else if (action === "delete-photo" || action === "cover") {
-      const listing = state.formListing,
-        seq = state.seq,
-        form = button.closest("form");
-      await withBusy(form, async () => {
-        if (action === "delete-photo") {
-          await api(
-            "/listings/" + listing.id + "/photos/" + encodeURIComponent(photo),
-            { method: "DELETE" },
-          );
-          listing.photos = listing.photos.filter((p) => p.id !== photo);
-        } else {
-          const ids = listing.photos.map((p) => p.id),
-            i = ids.indexOf(photo);
-          if (i < 0) return;
-          ids.splice(i, 1);
-          ids.unshift(photo);
-          await api("/listings/" + listing.id + "/photos", {
-            method: "PUT",
-            body: { ids },
-          });
-          listing.photos.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-        }
-        if (seq === state.seq) renderPhotos();
-      });
+      const seq = state.seq, form = button.closest("form");
+      clearTimeout(autosaveTimer);
+      await withBusy(form, () => changeSavedPhoto(action, photo));
+      if (seq === state.seq) {
+        renderPhotos();
+        captureEditor();
+        scheduleAutosave();
+      }
     }
   } catch (e) {
     toast(e.message, true);
@@ -1285,6 +1283,31 @@ document.addEventListener("click", async (event) => {
     if (button.isConnected) button.disabled = false;
   }
 });
+// Photo mutations share the editor queue with autosave and advance its local
+// revision just as touchListing does on the server.
+async function changeSavedPhoto(action, photo) {
+  const seq = state.seq, id = state.formListing?.id, editor = state.editor;
+  const change = async () => {
+    if (seq !== state.seq || state.formListing?.id !== id) return;
+    const listing = state.formListing;
+    if (action === "delete-photo") {
+      await api("/listings/" + id + "/photos/" + encodeURIComponent(photo), {method: "DELETE"});
+      listing.photos = listing.photos.filter(p => p.id !== photo);
+    } else {
+      const ids = listing.photos.map(p => p.id), index = ids.indexOf(photo);
+      if (index < 0) return;
+      ids.splice(index, 1); ids.unshift(photo);
+      await api("/listings/" + id + "/photos", {method: "PUT", body: {ids}});
+      listing.photos.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    }
+    listing.photos.forEach((p, index) => {p.position = index;});
+    if (listing.revision) listing.revision++;
+    if (listing.status === "active") listing.status = "pending";
+  };
+  if (!editor) return change();
+  editor.work = editor.work.catch(() => {}).then(change);
+  return editor.work;
+}
 function tick() {
   const deletion = document.querySelector("#deletion-resend");
   if (deletion) {
@@ -1303,6 +1326,12 @@ function tick() {
       seconds > 0 ? "Повторить через " + seconds + " с" : "Отправить ещё раз";
   }
 }
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  document.querySelector(".sidebar")?.classList.remove("open");
+  document.querySelector(".layout")?.classList.remove("menu-open");
+  document.querySelector(".mobile-menu")?.setAttribute("aria-expanded", "false");
+});
 document.addEventListener("input", (event) => {
   if (event.target.closest("#listing-form")) {
     captureEditor();
@@ -1353,7 +1382,7 @@ function editorStatus(message, error = false) {
 }
 function captureEditor(form = state.editor?.form, baseline = false) {
   const editor = state.editor;
-  if (!editor || editor.closing || !form) return;
+  if (!editor || editor.closing || !form || form.dataset.busy) return;
   const data = new FormData(form),
     raw = Object.fromEntries(data);
   let value = null;

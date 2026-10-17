@@ -31,6 +31,12 @@ func (a *API) bootstrap(w http.ResponseWriter, r *http.Request, _ auth.Session) 
 	return nil
 }
 func (a *API) requestCode(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
+	return a.requestLoginCode(w, r, false)
+}
+func (a *API) requestAdminCode(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
+	return a.requestLoginCode(w, r, true)
+}
+func (a *API) requestLoginCode(w http.ResponseWriter, r *http.Request, adminOnly bool) error {
 	var in struct {
 		Email          string `json:"email"`
 		Consent        bool   `json:"consent"`
@@ -40,6 +46,11 @@ func (a *API) requestCode(w http.ResponseWriter, r *http.Request, _ auth.Session
 	}
 	if err := decode(w, r, &in); err != nil {
 		return err
+	}
+	if adminOnly {
+		if err := a.requireAdminEmail(r.Context(), in.Email); err != nil {
+			return err
+		}
 	}
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
@@ -59,6 +70,12 @@ func (a *API) requestCode(w http.ResponseWriter, r *http.Request, _ auth.Session
 	return nil
 }
 func (a *API) verifyCode(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
+	return a.verifyLoginCode(w, r, false)
+}
+func (a *API) verifyAdminCode(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
+	return a.verifyLoginCode(w, r, true)
+}
+func (a *API) verifyLoginCode(w http.ResponseWriter, r *http.Request, adminOnly bool) error {
 	var in struct {
 		Email      string `json:"email"`
 		Code       string `json:"code"`
@@ -67,12 +84,21 @@ func (a *API) verifyCode(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	if err := decode(w, r, &in); err != nil {
 		return err
 	}
+	if adminOnly {
+		if err := a.requireAdminEmail(r.Context(), in.Email); err != nil {
+			return err
+		}
+	}
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
 	token, session, err := a.auth.Verify(r.Context(), in.Email, in.Code, in.Reactivate, true)
 	if err != nil {
 		return err
+	}
+	if adminOnly && !session.User.IsAdmin {
+		_ = a.auth.Logout(r.Context(), token)
+		return domain.ErrForbidden
 	}
 	a.setSession(w, token, session.ExpiresAt)
 	// Keep the guest token valid for other open login tabs; it grants no session.

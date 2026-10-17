@@ -33,7 +33,7 @@ func TestPublicContentWithoutJavaScript(t *testing.T) {
 			}
 		})
 	}
-	for _, path := range []string{"/login", "/admin-login"} {
+	for _, path := range []string{"/app", "/login", "/admin-login"} {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 || !strings.Contains(w.Header().Get("X-Robots-Tag"), "noindex") {
@@ -56,6 +56,25 @@ func TestPublicContentWithoutJavaScript(t *testing.T) {
 	handler.ServeHTTP(w, httptest.NewRequest("GET", "/sitemap.xml", nil))
 	if !strings.Contains(w.Body.String(), "https://dorm.example/privacy") || strings.Contains(w.Body.String(), "/api/") {
 		t.Fatal("incorrect sitemap", w.Body.String())
+	}
+}
+
+func TestPrivateEntryAndVersionedAssets(t *testing.T) {
+	w := httptest.NewRecorder()
+	Handler().ServeHTTP(w, httptest.NewRequest("GET", "/app", nil))
+	// The landing is available only in an inert template for logout. The visible
+	// app container must start with a neutral loading screen.
+	visible := strings.Split(w.Body.String(), `<template id="public-landing">`)[0]
+	if strings.Contains(visible, `id="landing"`) || !strings.Contains(visible, "Открываем Dorm Hub") {
+		t.Fatal("private entry contains a visible landing page")
+	}
+	if !strings.Contains(w.Body.String(), "/assets/app.js?v="+assetVersion) || !strings.Contains(w.Body.String(), "/assets/app.css?v="+assetVersion) {
+		t.Fatal("new releases can reuse stale scripts/styles")
+	}
+	w = httptest.NewRecorder()
+	Handler().ServeHTTP(w, httptest.NewRequest("GET", "/about", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `rel="canonical" href="https://dorm-hub.ru/"`) {
+		t.Fatal("public about page missing or duplicate canonical")
 	}
 }
 

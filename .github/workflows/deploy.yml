@@ -18,6 +18,20 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dormhub
+          POSTGRES_PASSWORD: integration-test-only
+          POSTGRES_DB: dormhub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dormhub -d dormhub_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
     env:
       IMAGE_NAME: ghcr.io/bed787/dorm-hub
       DEPLOY_HOST: 157.228.138.75
@@ -29,6 +43,14 @@ jobs:
 
       - name: Test frontend
         run: node --test tests/*.test.cjs
+
+      - name: Test application with PostgreSQL
+        run: |
+          docker run --rm --network host \
+            --volume "$GITHUB_WORKSPACE:/src:ro" --workdir /src \
+            --env GOFLAGS=-buildvcs=false \
+            --env "TEST_DATABASE_URL=postgres://dormhub:integration-test-only@127.0.0.1:5432/dormhub_test?sslmode=disable" \
+            golang:1.27-alpine go test -count=1 -timeout=3m ./...
 
       - name: Log in to private image registry
         env:

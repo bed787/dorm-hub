@@ -17,8 +17,23 @@ import (
 //go:embed index.html maintenance.html landing.html legal.html document.html site.json assets/*
 var files embed.FS
 
-var maintenancePage = template.Must(template.ParseFS(files, "maintenance.html"))
-var publicPages = template.Must(template.ParseFS(files, "index.html", "landing.html", "document.html", "legal.html"))
+var assetVersion = func() string {
+	h := sha256.New()
+	names, _ := fs.Glob(files, "assets/*")
+	for _, name := range names {
+		data, err := files.ReadFile(name)
+		if err != nil {
+			panic(err)
+		}
+		_, _ = h.Write([]byte(name))
+		_, _ = h.Write(data)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+}()
+
+var pageFunctions = template.FuncMap{"assetVersion": func() string { return assetVersion }}
+var maintenancePage = template.Must(template.New("maintenance.html").Funcs(pageFunctions).ParseFS(files, "maintenance.html"))
+var publicPages = template.Must(template.New("index.html").Funcs(pageFunctions).ParseFS(files, "index.html", "landing.html", "document.html", "legal.html"))
 
 type siteContent struct {
 	Campus          string `json:"campus"`
@@ -100,7 +115,7 @@ func HandlerFor(baseURL string) http.Handler {
 		if path == "/robots.txt" {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			if r.Method != "HEAD" {
-				_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /login\nDisallow: /admin-login\nSitemap: %s/sitemap.xml\n", baseURL)
+				_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /app\nDisallow: /login\nDisallow: /admin-login\nSitemap: %s/sitemap.xml\n", baseURL)
 			}
 			return
 		}
@@ -117,19 +132,27 @@ func HandlerFor(baseURL string) http.Handler {
 			}
 			return
 		}
-		if path != "/" && path != "/admin-login" && path != "/login" && path != "/rules" && path != "/privacy" && path != "/consent" {
+		if path != "/" && path != "/about" && path != "/app" && path != "/admin-login" && path != "/login" && path != "/rules" && path != "/privacy" && path != "/consent" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		data := pageData{siteContent: site, Canonical: baseURL + path, Landing: path == "/",
+		data := pageData{siteContent: site, Canonical: baseURL + path, Landing: path == "/" || path == "/about",
 			Title:       "Dorm Hub — студенческая барахолка " + site.Campus,
 			Description: "Объявления студентов " + site.Campus + ": учебники, техника, вещи для общежития и взаимопомощь. Размещай предложения и связывайся напрямую."}
 		name := "index.html"
 		switch path {
+		case "/about":
+			data.Canonical = baseURL + "/"
+		case "/app":
+			data.Title = "Dorm Hub"
+			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		case "/login", "/admin-login":
 			data.Title = "Вход — Dorm Hub"
+			if path == "/admin-login" {
+				data.Title = "Вход администратора — Dorm Hub"
+			}
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		case "/rules", "/privacy", "/consent":
 			name, data.Page = "document.html", strings.TrimPrefix(path, "/")

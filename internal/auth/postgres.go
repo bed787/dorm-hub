@@ -58,6 +58,13 @@ func (s *Service) Verify(ctx context.Context, email, code string, reactivate boo
 		return "", Session{}, err
 	}
 	defer tx.Rollback(context.Background())
+	// Account deletion locks the user before deleting login codes. Use the same
+	// order here to avoid a user-row/login-code deadlock during concurrent login.
+	var existing int64
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email=$1 FOR UPDATE`, email).Scan(&existing)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return "", Session{}, err
+	}
 	var digest string
 	var expires time.Time
 	var attempts int

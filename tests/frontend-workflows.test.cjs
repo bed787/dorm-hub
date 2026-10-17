@@ -37,7 +37,7 @@ function appHarness(responder) {
     },
   });
   const source = fs.readFileSync(path.join(__dirname, '../web/assets/app.js'), 'utf8');
-  vm.runInContext(source + '\n globalThis.workflows = {state, saveListing, queuePhotos, releasePending, profileView, draftHasContent, statusBadge};', context);
+  vm.runInContext(source + '\n globalThis.workflows = {state, saveListing, queuePhotos, releasePending, profileView, draftHasContent, statusBadge, changeSavedPhoto, captureEditor, enterApp, authPath};', context);
   return {...context.workflows, context, location, revoked, listeners, view};
 }
 function response(data) {
@@ -321,4 +321,59 @@ test('empty new form has no draft content',()=>{
  const h=appHarness(()=>{});
  assert.equal(h.draftHasContent({title:'',description:'',category:'',location:'',price_minor:null}),false);
  assert.equal(h.draftHasContent({title:'Л',description:'',category:'',location:'',price_minor:null}),true);
+});
+
+
+test('changing a cover waits for autosave and updates the current revision', async () => {
+ const gate=deferred(),calls=[];
+ const harness=appHarness((url,options)=>{calls.push({url,body:JSON.parse(options.body)});return response(true);});
+ harness.state.formListing={id:12,revision:7,status:'active',photos:[{id:'one',position:0},{id:'two',position:1}]};
+ harness.state.editor={work:gate.promise};
+ const changing=harness.changeSavedPhoto('cover','two');
+ await new Promise(setImmediate);
+ assert.equal(calls.length,0,'photo edit overtook autosave');
+ harness.state.formListing={...harness.state.formListing,revision:9};
+ gate.resolve();await changing;
+ assert.equal(harness.state.formListing.revision,10);
+ assert.equal(harness.state.formListing.status,'pending');
+ assert.deepEqual(Array.from(harness.state.formListing.photos,p=>p.id),['two','one']);
+ assert.deepEqual(Array.from(harness.state.formListing.photos,p=>p.position),[0,1]);
+ assert.deepEqual(calls,[{url:'/api/listings/12/photos',body:{ids:['two','one']}}]);
+});
+
+test('deleting a photo advances the revision used for the next save', async () => {
+ let updateBody;
+ const harness=appHarness((url,options)=>{
+  if(options.method==='DELETE')return response(true);
+  if(options.method==='PUT'){updateBody=JSON.parse(options.body);return response({id:12,revision:6,status:'archived',photos:[]});}
+  return response({id:12,revision:6,status:'archived',photos:[]});
+ });
+ harness.state.formListing={id:12,revision:4,status:'archived',photos:[{id:'one',position:0}]};
+ await harness.changeSavedPhoto('delete-photo','one');
+ assert.equal(harness.state.formListing.revision,5);
+ assert.equal(harness.state.formListing.photos.length,0);
+ await harness.saveListing({},fields(),'draft');
+ assert.equal(updateBody.revision,5,'next save used the obsolete revision');
+});
+
+test('disabled form controls do not overwrite recovery data while saving',()=>{
+ const harness=appHarness(()=>{throw new Error('unexpected request');});
+ const input={title:'Сохранённый текст'};
+ harness.state.editor={form:{dataset:{busy:'1'}},input,dirty:2};
+ harness.captureEditor();
+ assert.equal(harness.state.editor.input,input);
+ assert.equal(harness.state.editor.dirty,2);
+});
+
+test('login keeps the requested listing and administrator entry chooses moderation',()=>{
+ const harness=appHarness(()=>{throw new Error('unexpected request');});
+ let destination;
+ harness.context.history={replaceState(_state,_title,url){destination=url;}};
+ harness.location.hash='#/listing/123';harness.enterApp();
+ assert.equal(destination,'/app#/listing/123');
+ harness.location.hash='';harness.state.adminLogin=true;harness.state.me={is_admin:true};harness.enterApp();
+ assert.equal(destination,'/app#/admin?tab=site');
+ assert.equal(harness.authPath('request'),'/auth/admin/request');
+ harness.state.adminLogin=false;
+ assert.equal(harness.authPath('request'),'/auth/request');
 });

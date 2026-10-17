@@ -120,7 +120,7 @@ func TestMaintenanceAccessAndRecovery(t *testing.T) {
 	for _, path := range []string{"/health", "/ready", "/assets/app.js", "/admin-login", "/api/auth/bootstrap", "/rules", "/privacy", "/consent", "/robots.txt", "/sitemap.xml"} {
 		check(do("GET", path, "", "", ""), 200)
 	}
-	check(do("GET", "/", "", adminToken, ""), 200)
+	check(do("GET", "/", "", adminToken, ""), 307)
 	check(do("GET", "/api/listings", "", adminToken, ""), 200)
 	check(do("GET", path, "", adminToken, ""), 200)
 	check(do("PUT", path, `{"maintenance":false}`, adminToken, "wrong"), 403)

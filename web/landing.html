@@ -6,21 +6,21 @@
     <section class="public-hero public-width" id="about">
       <div class="public-hero-copy">
         <p class="public-kicker">Студентам {{.Campus}} · {{.City}}</p>
-        <h1>Нужное —<br>у кого-то <em>рядом.</em></h1>
-        <p class="public-lead">Dorm Hub — студенческая доска объявлений {{.Campus}}. Продавай вещи, находи нужное и предлагай помощь соседям по общежитию.</p>
+        <h1>Объявления<br>студентов {{.Campus}}</h1>
+        <p class="public-lead">Dorm Hub — студенческая доска объявлений {{.Campus}}. Продажа и обмен вещей, учебные материалы, услуги и помощь в общежитии.</p>
         <div class="public-actions"><a class="button" href="/login">Войти по почте <span aria-hidden="true">↗</span></a><a class="public-text-link" href="#how">Как это работает ↓</a></div>
         <p class="public-caption">Без пароля и платы за размещение. Объявления и контакты доступны после входа.</p>
       </div>
       <aside class="public-board" aria-label="Что можно найти на площадке">
-        <div class="public-board-heading"><span>Всё для жизни в общаге</span><span aria-hidden="true">↗</span></div>
-        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">◇</span><div><h2>Вещи и техника</h2><p>От настольной лампы до монитора</p></div></div>
+        <div class="public-board-heading"><span>Категории объявлений</span><span aria-hidden="true">↗</span></div>
+        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">◇</span><div><h2>Вещи и техника</h2><p>Одежда, мебель, электроника</p></div></div>
         <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">▤</span><div><h2>Учёба</h2><p>Учебники, материалы, репетиторство</p></div></div>
-        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">✦</span><div><h2>Услуги и помощь</h2><p>Предложи свои навыки или найди помощь</p></div></div>
-        <div class="public-board-foot">От студентов — студентам.</div>
+        <div class="public-topic"><span class="public-topic-icon" aria-hidden="true">✦</span><div><h2>Услуги и помощь</h2><p>Ремонт, перевозка, настройка техники</p></div></div>
+
       </aside>
     </section>
     <section class="public-section public-width" id="how" aria-labelledby="how-title">
-      <div class="public-section-heading"><p class="public-kicker">Всё просто</p><h2 id="how-title">От объявления до встречи</h2></div>
+      <div class="public-section-heading"><h2 id="how-title">Как пользоваться</h2></div>
       <ol class="public-steps">
         <li><span class="public-step-number">01</span><h3>Войди по почте</h3><p>Получи одноразовый код на студенческую почту или другой разрешённый адрес.</p></li>
         <li><span class="public-step-number">02</span><h3>Найди или предложи</h3><p>Посмотри ленту или создай объявление. Перед публикацией его проверит модератор.</p></li>
@@ -28,7 +28,7 @@
       </ol>
     </section>
     <section class="public-section public-width public-faq" id="faq" aria-labelledby="faq-title">
-      <div class="public-section-heading"><p class="public-kicker">Есть вопрос?</p><h2 id="faq-title">Разберёмся</h2></div>
+      <div class="public-section-heading"><h2 id="faq-title">Частые вопросы</h2></div>
       <div class="public-faq-list">
         <details><summary>Что такое Dorm Hub?</summary><p>Это некоммерческая площадка объявлений для студентов {{.Campus}}. Здесь можно продать, обменять или отдать вещи, найти учебники, предложить услуги и попросить о помощи.</p></details>
         <details><summary>Кто может войти?</summary><p>Участники с разрешённой студенческой почтой и адресами, которым администрация отдельно открыла доступ. Вход — по коду из письма, придумывать пароль не нужно.</p></details>
@@ -41,11 +41,11 @@
         <details><summary>Куда сообщить о нарушении или чужих контактах?</summary><p>В объявлении и профиле есть кнопка жалобы. Если аккаунта нет или войти не получается, {{template "support-inline" .}}. Ссылка на объявление и описание проблемы помогут разобраться.</p></details>
       </div>
     </section>
-    <section class="public-width public-final"><div><p class="public-kicker">Соседи уже ближе</p><h2>Найди то, что пригодится.</h2></div><a class="button" href="/login">Открыть площадку ↗</a></section>
+
   </main>
   {{template "public-footer" .}}
 </div>
 {{end}}
-{{define "public-header"}}<header class="public-header public-width"><a href="/" class="public-brand" aria-label="Dorm Hub — главная"><img src="/assets/icon.svg" alt="" width="72" height="64"><span>dorm-hub</span></a><nav aria-label="О площадке"><a href="/#how">Как это работает</a><a href="/#faq">FAQ</a><button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">◐</button><a class="button plain" href="/login">Войти</a></nav></header>{{end}}
+{{define "public-header"}}<header class="public-header public-width"><a href="/" class="public-brand" aria-label="Dorm Hub — главная"><img src="/assets/brand.png?v={{assetVersion}}" alt="Dorm Hub" width="1990" height="1054"></a><nav aria-label="О площадке"><a href="/about#how">Как это работает</a><a href="/about#faq">FAQ</a><button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">◐</button><a class="button plain" href="/login">Войти</a></nav></header>{{end}}
 {{define "support-inline"}}{{if .TelegramURL}}напиши администрации в <a href="{{.TelegramURL}}" target="_blank" rel="noopener noreferrer">Telegram ({{.SupportTelegram}})</a>{{else}}обратись к администрации площадки{{end}}{{end}}
 {{define "public-footer"}}<footer class="public-footer public-width"><div><strong>Dorm Hub</strong><p>Независимый студенческий проект.<br>Не является официальным сервисом университета.</p></div><nav aria-label="Документы"><a href="/rules">Правила сайта</a><a href="/privacy">Политика обработки ПД</a><a href="/consent">Согласие на обработку ПД</a>{{if .TelegramURL}}<a href="{{.TelegramURL}}" target="_blank" rel="noopener noreferrer">Связаться в Telegram</a>{{end}}</nav></footer>{{end}}

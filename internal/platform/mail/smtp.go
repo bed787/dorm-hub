@@ -67,7 +67,7 @@ func (s *SMTP) send(ctx context.Context, to, subject, purpose, code string) erro
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s: %s\r\nКод действует 10 минут. Если вы не запрашивали вход, проигнорируйте письмо.\r\n", from.String(), recipient.String(), subject, purpose, code)
+	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s: %s\r\nКод действует 10 минут. Если вы не запрашивали этот код, проигнорируйте письмо.\r\n", from.String(), recipient.String(), subject, purpose, code)
 	if _, err = writer.Write([]byte(message)); err != nil {
 		return err
 	}

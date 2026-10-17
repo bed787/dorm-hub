@@ -63,6 +63,8 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("GET /api/auth/bootstrap", false, false, a.bootstrap)
 	route("POST /api/auth/request", false, false, a.requestCode)
 	route("POST /api/auth/verify", false, false, a.verifyCode)
+	route("POST /api/auth/admin/request", false, false, a.requestAdminCode)
+	route("POST /api/auth/admin/verify", false, false, a.verifyAdminCode)
 	route("POST /api/auth/logout", true, false, a.logout)
 	route("GET /api/me", true, false, a.me)
 	route("PUT /api/me", true, false, a.updateMe)
@@ -97,7 +99,7 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("POST /api/admin/dorms", true, true, a.createDorm)
 	route("DELETE /api/admin/dorms/{id}", true, true, a.deleteDorm)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { a.fail(w, r, domain.ErrNotFound) })
-	mux.Handle("/", web.HandlerFor(cfg.BaseURL))
+	mux.Handle("/", a.pages(web.HandlerFor(cfg.BaseURL)))
 	return middleware.Wrap(a.maintenanceGate(mux), logger)
 }
 

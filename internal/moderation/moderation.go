@@ -194,6 +194,12 @@ func (s *Service) Action(ctx context.Context, actor int64, kind string, target i
 			}
 		case "delete":
 			_, err = tx.Exec(ctx, `UPDATE listings SET deleted_at=now(),status='archived',updated_at=now() WHERE id=$1`, target)
+			if err == nil {
+				_, err = tx.Exec(ctx, `INSERT INTO pending_file_deletions(filename) SELECT filename FROM photos WHERE listing_id=$1 ON CONFLICT DO NOTHING`, target)
+			}
+			if err == nil {
+				_, err = tx.Exec(ctx, `DELETE FROM photos WHERE listing_id=$1`, target)
+			}
 		default:
 			return nil, domain.Invalid("Неверное действие над объявлением")
 		}

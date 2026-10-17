@@ -205,7 +205,11 @@ func (s *Service) Delete(ctx context.Context, id string, listing, owner int64) e
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
-	return s.FlushDeletions(ctx)
+	// The database operation has committed. File cleanup is retried by the
+	// durable queue; a transient disk error must not report the edit as failed
+	// and leave the client's listing revision behind the server.
+	_ = s.FlushDeletions(ctx)
+	return nil
 }
 func (s *Service) Reorder(ctx context.Context, listing, owner int64, ids []string) error {
 	if len(ids) > 10 {

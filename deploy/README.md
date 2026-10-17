@@ -1,8 +1,6 @@
 # Автоматическое обновление dorm-hub
 
-После настройки: коммит и `git push` в main → GitHub запускает 30 существующих
-фронтенд-тестов, собирает Docker-образ (Dockerfile также выполняет go vet и
-go test), публикует его в приватном GHCR и обновляет приложение на VPS.
+После настройки: коммит и `git push` в main → GitHub запускает фронтенд-тесты и интеграционные проверки с отдельной PostgreSQL, затем собирает Docker-образ (Dockerfile также выполняет go vet и go test), публикует его в приватном GHCR и обновляет приложение на VPS.
 Разворачивается конкретный digest образа, а не изменяемый тег latest.
 
 ## Установка: на Mac
@@ -30,15 +28,14 @@ bash /opt/dorm-hub/deploy/install-server.sh
 ## Доступ GitHub: на Mac
 
 Эти команды передают ключ напрямую в секрет GitHub, не выводя его на экран.
-Первое SSH-подключение использует обычный пароль сервера. Второе читает
-публичный ключ сервера через уже доверенное SSH-соединение; ssh-keyscan
+Первое SSH-подключение использует обычный пароль сервера. Второе использует уже сохранённый и проверенный ключ сервера из known_hosts на Mac; ssh-keyscan
 из GitHub Actions не используется.
 
 ```bash
 cd /Users/ruslan/Desktop/projects/dorm-hub
 set -o pipefail
 ssh root@157.228.138.75 'cat /root/.ssh/github_actions_deploy' | gh secret set DEPLOY_SSH_KEY --repo bed787/dorm-hub
-ssh root@157.228.138.75 'printf "157.228.138.75 "; cat /etc/ssh/ssh_host_ed25519_key.pub' | gh secret set DEPLOY_KNOWN_HOSTS --repo bed787/dorm-hub
+ssh-keygen -F 157.228.138.75 > /tmp/dorm-hub-known-hosts && gh secret set DEPLOY_KNOWN_HOSTS --repo bed787/dorm-hub < /tmp/dorm-hub-known-hosts
 ```
 
 Секреты видны по именам в Settings → Secrets and variables → Actions.
@@ -130,7 +127,7 @@ APP_IMAGE=$(cat /var/lib/dorm-hub-deploy/current-image) docker compose --project
 ограничение SSH-команд и сценарии скрипта с имитацией Docker: успешная выкладка,
 ошибка скачивания, ошибка healthcheck с восстановлением, ручной откат и
 отклонение посторонней команды. На имеющейся локальной копии исходников прошли
-30 фронтенд-тестов. Полная сборка образа и работа реального SSH/Compose должны
+фронтенд-тесты (актуальные результаты — в docs/review-2026-10-17.md). Полная сборка образа и работа реального SSH/Compose должны
 подтвердиться первым запуском Actions: здесь нет доступа к вашему VPS и Docker.
 
 Документация GitHub:

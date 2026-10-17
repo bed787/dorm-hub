@@ -6,6 +6,8 @@ import (
 	"dorm-hub/internal/domain"
 	"dorm-hub/web"
 	"encoding/json"
+	"errors"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -50,7 +52,7 @@ func (a *API) maintenanceGate(next http.Handler) http.Handler {
 			return
 		}
 		// Login handlers independently allow only administrator emails while closed.
-		if r.Method == http.MethodPost && (path == "/api/auth/request" || path == "/api/auth/verify" || path == "/api/auth/logout") {
+		if r.Method == http.MethodPost && (path == "/api/auth/request" || path == "/api/auth/verify" || path == "/api/auth/logout" || path == "/api/auth/admin/request" || path == "/api/auth/admin/verify") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -81,18 +83,38 @@ func (a *API) allowMaintenanceLogin(w http.ResponseWriter, r *http.Request, emai
 	if err != nil || !state.Maintenance {
 		return err == nil, err
 	}
-	email = strings.ToLower(strings.TrimSpace(email))
-	allowed := a.cfg.IsAdmin(email)
-	if !allowed {
-		err = a.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE email=$1 AND is_admin AND NOT blocked)`, email).Scan(&allowed)
-		if err != nil {
-			return false, err
-		}
+	allowed, err := a.isAdminEmail(r.Context(), email)
+	if err != nil {
+		return false, err
 	}
 	if !allowed {
 		maintenanceResponse(w, r, state.Reason)
 	}
 	return allowed, nil
+}
+
+func (a *API) isAdminEmail(ctx context.Context, email string) (bool, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	var admin, blocked bool
+	err := a.db.QueryRow(ctx, `SELECT is_admin,blocked FROM users WHERE email=$1`, email).Scan(&admin, &blocked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return a.cfg.IsAdmin(email), nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !blocked && (admin || a.cfg.IsAdmin(email)), nil
+}
+
+func (a *API) requireAdminEmail(ctx context.Context, email string) error {
+	allowed, err := a.isAdminEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return domain.Forbidden("Эта форма доступна только администраторам. Используйте почту администратора")
+	}
+	return nil
 }
 
 func (a *API) siteSettings(w http.ResponseWriter, r *http.Request, _ auth.Session) error {
