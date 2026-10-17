@@ -262,7 +262,7 @@ func TestModeratorDeletionReleasesPhotoQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = moderation.New(db).Action(ctx, admin, "listing", first.ID, "delete", "Объявление нарушает правила"); err != nil {
+	if err = moderation.New(db).Action(ctx, admin, "listing", first.ID, "delete", "Объявление нарушает правила"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = ads.Get(ctx, first.ID, owner, false); !errors.Is(err, domain.ErrNotFound) {

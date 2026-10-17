@@ -33,6 +33,7 @@ jobs:
           --health-timeout 3s
           --health-retries 15
     env:
+      GO_VERSION: 1.27.2
       IMAGE_NAME: ghcr.io/bed787/dorm-hub
       DEPLOY_HOST: 157.228.138.75
     steps:
@@ -50,7 +51,10 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/src:ro" --workdir /src \
             --env GOFLAGS=-buildvcs=false \
             --env "TEST_DATABASE_URL=postgres://dormhub:integration-test-only@127.0.0.1:5432/dormhub_test?sslmode=disable" \
-            golang:1.27-alpine go test -count=1 -timeout=3m ./...
+            "golang:${GO_VERSION}-alpine" sh -ec '
+              go test -count=1 -timeout=3m ./...
+              go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+            '
 
       - name: Log in to private image registry
         env:
@@ -65,6 +69,7 @@ jobs:
           image="$IMAGE_NAME:$GITHUB_SHA"
           # The existing Dockerfile runs go vet and go test before compilation.
           docker build --pull \
+            --build-arg "GO_VERSION=$GO_VERSION" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --tag "$image" .

@@ -1,11 +1,4 @@
 .env
-go.mod
-go.sum
-compose.yaml
-compose.test.yaml
-compose.production.yaml
-Makefile
-.env
 .env.*
 /data/
 /bin/

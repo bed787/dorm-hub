@@ -32,6 +32,7 @@ type App struct {
 	shutdownTimeout time.Duration
 	db              *pgxpool.Pool
 	photos          *media.Service
+	login           *auth.Service
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -63,10 +64,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	if err = photos.FlushDeletions(ctx); err != nil {
 		return nil, fmt.Errorf("clean deleted files: %w", err)
 	}
-	handler := httpapi.New(cfg, logger, db, auth.New(db, cfg, mail.New(cfg)), users.New(db), listings.New(db), locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, logs)
+	login := auth.New(db, cfg, mail.New(cfg))
+	handler := httpapi.New(cfg, logger, db, login, users.New(db), listings.New(db), locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, logs)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler, ReadHeaderTimeout: cfg.ReadHeaderTimeout, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 * 1024, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	ok = true
-	return &App{server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos}, nil
+	return &App{server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos, login: login}, nil
 }
 func (a *App) Run(ctx context.Context) error {
 	defer a.db.Close()
@@ -81,9 +83,14 @@ func (a *App) Run(ctx context.Context) error {
 			case <-cleanupCtx.Done():
 				return
 			case <-ticker.C:
-				if err := a.photos.FlushDeletions(cleanupCtx); err != nil {
+				passCtx, cancel := context.WithTimeout(cleanupCtx, 5*time.Second)
+				if err := a.login.PruneExpired(passCtx); err != nil {
+					a.logger.Error("expired authentication cleanup failed")
+				}
+				if err := a.photos.FlushDeletions(passCtx); err != nil {
 					a.logger.Error("file cleanup retry failed")
 				}
+				cancel()
 			}
 		}
 	}()

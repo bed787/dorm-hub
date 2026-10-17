@@ -111,7 +111,7 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("DELETE /api/admin/dorms/{id}", true, true, a.deleteDorm)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { a.fail(w, r, domain.ErrNotFound) })
 	mux.Handle("/", a.pages(web.HandlerFor(cfg.BaseURL)))
-	return middleware.Wrap(a.maintenanceGate(mux), logger)
+	return middleware.Wrap(a.maintenanceGate(mux), logger, cfg.Env == "production" && cfg.SecureCookies)
 }
 
 type endpoint func(http.ResponseWriter, *http.Request, auth.Session) error

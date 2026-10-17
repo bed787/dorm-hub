@@ -259,34 +259,41 @@ func touchListing(ctx context.Context, tx pgx.Tx, id int64) error {
 	return err
 }
 func (s *Service) FlushDeletions(ctx context.Context) error {
-	rows, err := s.db.Query(ctx, `SELECT filename FROM pending_file_deletions ORDER BY created_at LIMIT 200`)
-	if err != nil {
-		return err
-	}
-	var names []string
-	for rows.Next() {
-		var name string
-		if err = rows.Scan(&name); err != nil {
-			rows.Close()
+	for {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		names = append(names, name)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		if err = s.files.Delete(name); err != nil {
+		rows, err := s.db.Query(ctx, `SELECT filename FROM pending_file_deletions ORDER BY created_at LIMIT 200`)
+		if err != nil {
 			return err
 		}
-		if _, err = s.db.Exec(ctx, `DELETE FROM pending_file_deletions WHERE filename=$1`, name); err != nil {
+		var names []string
+		for rows.Next() {
+			var name string
+			if err = rows.Scan(&name); err != nil {
+				rows.Close()
+				return err
+			}
+			names = append(names, name)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
 			return err
 		}
+		for _, name := range names {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err = s.files.Delete(name); err != nil {
+				return err
+			}
+			if _, err = s.db.Exec(ctx, `DELETE FROM pending_file_deletions WHERE filename=$1`, name); err != nil {
+				return err
+			}
+		}
+		if len(names) < 200 {
+			return nil
+		}
 	}
-	if len(names) == 200 {
-		return s.FlushDeletions(ctx)
-	}
-	return nil
 }

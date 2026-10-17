@@ -143,12 +143,3 @@ func (s *Service) Open(ctx context.Context, id string, viewer int64, admin bool)
 	}
 	return file, created, err
 }
-func (s *Service) RemoveFiles(names []string) error {
-	var first error
-	for _, name := range names {
-		if err := s.files.Delete(name); err != nil && first == nil {
-			first = err
-		}
-	}
-	return first
-}

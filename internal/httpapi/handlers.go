@@ -432,12 +432,9 @@ func (a *API) moderate(w http.ResponseWriter, r *http.Request, s auth.Session) e
 	if err := decode(w, r, &in); err != nil {
 		return err
 	}
-	files, err := a.moderation.Action(r.Context(), s.User.ID, in.TargetType, in.TargetID, in.Action, in.Reason)
+	err := a.moderation.Action(r.Context(), s.User.ID, in.TargetType, in.TargetID, in.Action, in.Reason)
 	if err != nil {
 		return err
-	}
-	if err = a.media.RemoveFiles(files); err != nil {
-		a.logger.Error("remove deleted account files", "error", err)
 	}
 	if err = a.media.FlushDeletions(r.Context()); err != nil {
 		a.logger.Error("file cleanup scheduled for retry")

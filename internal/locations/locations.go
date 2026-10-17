@@ -50,7 +50,7 @@ func (s *Service) Catalog(ctx context.Context) (Catalog, error) {
 			return c, err
 		}
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,location,name FROM dorms ORDER BY location,substring(name from '^№ ([0-9]+)')::integer NULLS LAST,name`)
+	rows, err := s.db.Query(ctx, `SELECT id,location,name FROM dorms ORDER BY location,substring(name from '^№ ([0-9]+)')::numeric NULLS LAST,name`)
 	if err != nil {
 		return c, err
 	}

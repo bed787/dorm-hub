@@ -155,6 +155,18 @@ func checkLimit(ctx context.Context, tx pgx.Tx, author int64) error {
 	}
 	return nil
 }
+
+// Call while holding the author lock, for every user path entering the archive.
+func checkArchiveLimit(ctx context.Context, tx pgx.Tx, author int64) error {
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM listings WHERE author_id=$1 AND status='archived' AND deleted_at IS NULL`, author).Scan(&count); err != nil {
+		return err
+	}
+	if count >= 50 {
+		return domain.Conflict("В архиве можно хранить до 50 объявлений. Удалите ненужные")
+	}
+	return nil
+}
 func checkDorm(ctx context.Context, tx pgx.Tx, in Input) error {
 	if in.DormID == nil {
 		return nil
@@ -218,12 +230,8 @@ func (s *Service) CreateOnce(ctx context.Context, author int64, in Input, key st
 	status, archive := "pending", ""
 	if in.Draft {
 		status, archive = "archived", "draft"
-		var count int
-		if err = tx.QueryRow(ctx, `SELECT count(*) FROM listings WHERE author_id=$1 AND status='archived' AND deleted_at IS NULL`, author).Scan(&count); err != nil {
+		if err = checkArchiveLimit(ctx, tx, author); err != nil {
 			return Listing{}, err
-		}
-		if count >= 50 {
-			return Listing{}, domain.Conflict("В архиве можно хранить до 50 объявлений. Удалите ненужные")
 		}
 	} else if err = checkLimit(ctx, tx, author); err != nil {
 		return Listing{}, err
@@ -276,6 +284,11 @@ func (s *Service) Update(ctx context.Context, id, author int64, in Input) (Listi
 	// entry is hidden as soon as any draft update is committed.
 	if status != "completed" {
 		if in.Draft {
+			if status != "archived" {
+				if err = checkArchiveLimit(ctx, tx, author); err != nil {
+					return Listing{}, err
+				}
+			}
 			status = "archived"
 			if archive == "" {
 				archive = "draft"
@@ -331,6 +344,11 @@ func (s *Service) TransitionWithOutcome(ctx context.Context, id, author int64, a
 		}
 		_, err = tx.Exec(ctx, `UPDATE listings SET status='completed',completed_at=now(),completion_reason=$2,completion_counted=$3,archive_kind='',revision=revision+1,updated_at=now() WHERE id=$1`, id, outcome, counted)
 	case "archive":
+		if status != "archived" {
+			if err = checkArchiveLimit(ctx, tx, author); err != nil {
+				return Listing{}, err
+			}
+		}
 		_, err = tx.Exec(ctx, `UPDATE listings SET status='archived',archive_kind='held',revision=revision+1,updated_at=now() WHERE id=$1`, id)
 	case "submit", "activate":
 		if hidden {

@@ -133,30 +133,29 @@ func (s *Service) Accounts(ctx context.Context, offset int) ([]Account, error) {
 	}
 	return items, rows.Err()
 }
-func (s *Service) Action(ctx context.Context, actor int64, kind string, target int64, action, reason string) ([]string, error) {
+func (s *Service) Action(ctx context.Context, actor int64, kind string, target int64, action, reason string) error {
 	if err := s.requireAdmin(ctx, actor); err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := reasonValid(reason); err != nil {
-		return nil, err
+		return err
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer tx.Rollback(context.Background())
-	files := []string{}
 	if kind == "user" {
 		if target == actor {
-			return nil, domain.Forbidden("Нельзя применить это действие к своему аккаунту")
+			return domain.Forbidden("Нельзя применить это действие к своему аккаунту")
 		}
 		var admin bool
 		if err = tx.QueryRow(ctx, `SELECT is_admin FROM users WHERE id=$1 FOR UPDATE`, target).Scan(&admin); err != nil {
-			return nil, postgres.Error(err)
+			return postgres.Error(err)
 		}
 		if admin {
-			return nil, domain.Forbidden("Действия над другим администратором запрещены")
+			return domain.Forbidden("Действия над другим администратором запрещены")
 		}
 		switch action {
 		case "block", "unblock":
@@ -167,30 +166,30 @@ func (s *Service) Action(ctx context.Context, actor int64, kind string, target i
 		case "delete":
 			var email string
 			if err = tx.QueryRow(ctx, `SELECT email FROM users WHERE id=$1`, target).Scan(&email); err != nil {
-				return nil, err
+				return err
 			}
 			if err = users.DeleteInTx(ctx, tx, target, email); err != nil {
-				return nil, err
+				return err
 			}
-			return files, tx.Commit(ctx)
+			return tx.Commit(ctx)
 		default:
-			return nil, domain.Invalid("Неверное действие над аккаунтом")
+			return domain.Invalid("Неверное действие над аккаунтом")
 		}
 	} else if kind == "listing" {
 		var author int64
 		if err = tx.QueryRow(ctx, `SELECT author_id FROM listings WHERE id=$1 AND deleted_at IS NULL`, target).Scan(&author); err != nil {
-			return nil, postgres.Error(err)
+			return postgres.Error(err)
 		}
 		// All write paths lock author first, then listing, in a consistent order.
 		if _, err = tx.Exec(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, author); err != nil {
-			return nil, err
+			return err
 		}
 		switch action {
 		case "hide", "show":
 			tag, e := tx.Exec(ctx, `UPDATE listings SET hidden=$2,status=CASE WHEN status='active' THEN 'pending' ELSE status END,revision=revision+1,updated_at=now() WHERE id=$1 AND deleted_at IS NULL`, target, action == "hide")
 			err = e
 			if e == nil && tag.RowsAffected() == 0 {
-				return nil, domain.ErrNotFound
+				return domain.ErrNotFound
 			}
 		case "delete":
 			_, err = tx.Exec(ctx, `UPDATE listings SET deleted_at=now(),status='archived',updated_at=now() WHERE id=$1`, target)
@@ -201,18 +200,18 @@ func (s *Service) Action(ctx context.Context, actor int64, kind string, target i
 				_, err = tx.Exec(ctx, `DELETE FROM photos WHERE listing_id=$1`, target)
 			}
 		default:
-			return nil, domain.Invalid("Неверное действие над объявлением")
+			return domain.Invalid("Неверное действие над объявлением")
 		}
 	} else {
-		return nil, domain.Invalid("Неверный объект модерации")
+		return domain.Invalid("Неверный объект модерации")
 	}
 	if err != nil {
-		return nil, postgres.Error(err)
+		return postgres.Error(err)
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO moderation_actions(actor_id,target_type,target_id,action,reason) VALUES($1,$2,$3,$4,$5)`, actor, kind, target, action, strings.TrimSpace(reason)); err != nil {
-		return nil, err
+		return err
 	}
-	return files, tx.Commit(ctx)
+	return tx.Commit(ctx)
 }
 
 func (s *Service) requireAdmin(ctx context.Context, actor int64) error {

@@ -1,6 +1,6 @@
 # Автоматическое обновление dorm-hub
 
-После настройки: коммит и `git push` в main → GitHub запускает фронтенд-тесты и интеграционные проверки с отдельной PostgreSQL, затем собирает Docker-образ (Dockerfile также выполняет go vet и go test), публикует его в приватном GHCR и обновляет приложение на VPS.
+После настройки: коммит и `git push` в main → GitHub запускает фронтенд-тесты и интеграционные проверки с отдельной PostgreSQL и govulncheck, затем собирает Docker-образ (Dockerfile также выполняет go vet и go test), публикует его в приватном GHCR и обновляет приложение на VPS.
 Разворачивается конкретный digest образа, а не изменяемый тег latest.
 
 ## Установка: на Mac
@@ -133,3 +133,12 @@ APP_IMAGE=$(cat /var/lib/dorm-hub-deploy/current-image) docker compose --project
 Документация GitHub:
 https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images
 https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+
+
+## Настройки безопасности после проверки 17 октября
+
+Сборка и CI используют Go 1.27.2. Перед публикацией выполняется `govulncheck@v1.9.0`; находки или недоступность проверки останавливают выкладку.
+
+В `compose.production.yaml` и `deploy/compose.registry.yaml` включена ротация Docker-логов: драйвер local, до трёх файлов по 10 МБ на контейнер. На существующем VPS рабочая копия Compose хранится отдельно в `/etc/dorm-hub/compose.registry.yaml` и не обновляется от `git push`. Команды безопасного переноса конфигурации и проверки приведены в [отчёте](../docs/security-review-2026-10-17.md).
+
+Для Caddy перед приложением должен быть настроен `TRUSTED_PROXY_CIDRS` на непосредственный адрес прокси, видимый контейнеру. Без этого все посетители за ним могут делить общий лимит входа. Нельзя доверять `X-Forwarded-For` от произвольного адреса; публичный порт приложения остаётся привязан к 127.0.0.1.

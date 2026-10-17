@@ -1,0 +1,67 @@
+name: dorm-hub
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      APP_ENV: production
+      HTTP_ADDR: 0.0.0.0:8080
+      BASE_URL: ${BASE_URL:?Set the public HTTPS origin}
+      DATABASE_URL: ${DATABASE_URL:?Set the database connection URL}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:?Set the allowed email domains}
+      ALLOWED_EMAIL_ADDRESSES: ${ALLOWED_EMAIL_ADDRESSES:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?Set the initial administrator email}
+      AUTH_SECRET: ${AUTH_SECRET:?Generate a new AUTH_SECRET}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      UPLOAD_DIR: /app/data/uploads
+      UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-200}
+      UPLOAD_PHOTO_LIMIT: ${UPLOAD_PHOTO_LIMIT:-200}
+      SMTP_HOST: ${SMTP_HOST:?Set the SMTP host}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_STARTTLS: "true"
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:?Set the sender address}
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  db:
+    image: postgres:17-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: dormhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a database password}
+      POSTGRES_DB: dormhub
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dormhub -d dormhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+volumes:
+  postgres:
+  uploads:

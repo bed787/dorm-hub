@@ -1,4 +1,5 @@
-FROM golang:1.27-alpine AS build
+ARG GO_VERSION=1.27.2
+FROM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
 COPY . .

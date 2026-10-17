@@ -28,7 +28,7 @@ func (r *recorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
-func Wrap(next http.Handler, logger *slog.Logger) http.Handler {
+func Wrap(next http.Handler, logger *slog.Logger, secure bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		idBytes := make([]byte, 12)
@@ -36,6 +36,9 @@ func Wrap(next http.Handler, logger *slog.Logger) http.Handler {
 		id := hex.EncodeToString(idBytes)
 		w.Header().Set("X-Request-ID", id)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if secure {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")

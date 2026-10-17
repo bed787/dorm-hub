@@ -430,10 +430,10 @@ func TestModerationAndAuthBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	mod := moderation.New(db)
-	if _, err = mod.Action(ctx, viewer, "user", owner, "block", "Попытка без административных прав"); !errors.Is(err, domain.ErrForbidden) {
+	if err = mod.Action(ctx, viewer, "user", owner, "block", "Попытка без административных прав"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatal("non-admin business operation accepted")
 	}
-	if _, err = mod.Action(ctx, admin, "user", owner, "block", "Нарушение правил площадки"); err != nil {
+	if err = mod.Action(ctx, admin, "user", owner, "block", "Нарушение правил площадки"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = ads.Get(ctx, l.ID, viewer, false); !errors.Is(err, domain.ErrNotFound) {
@@ -658,10 +658,10 @@ func TestAdminCanInspectBlockedProfileAndListings(t *testing.T) {
 	if _, err = ads.Transition(ctx, l.ID, owner, "archive"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = mod.Action(ctx, admin, "listing", l.ID, "hide", "Скрыто для проверки модератором"); err != nil {
+	if err = mod.Action(ctx, admin, "listing", l.ID, "hide", "Скрыто для проверки модератором"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = mod.Action(ctx, admin, "user", owner, "block", "Заблокирован для проверки модератором"); err != nil {
+	if err = mod.Action(ctx, admin, "user", owner, "block", "Заблокирован для проверки модератором"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = profiles.Get(ctx, owner, viewer); !errors.Is(err, domain.ErrNotFound) {
