@@ -11,6 +11,7 @@ import (
 	"dorm-hub/internal/media"
 	"dorm-hub/internal/moderation"
 	"dorm-hub/internal/platform/filestore"
+	"dorm-hub/internal/platform/logview"
 	"dorm-hub/internal/platform/mail"
 	"dorm-hub/internal/platform/postgres"
 	"dorm-hub/internal/stars"
@@ -34,6 +35,8 @@ type App struct {
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
+	logs := logview.New()
+	logger = slog.New(logview.NewHandler(logger.Handler(), logs))
 	db, err := postgres.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
@@ -60,7 +63,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	if err = photos.FlushDeletions(ctx); err != nil {
 		return nil, fmt.Errorf("clean deleted files: %w", err)
 	}
-	handler := httpapi.New(cfg, logger, db, auth.New(db, cfg, mail.New(cfg)), users.New(db), listings.New(db), locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos)
+	handler := httpapi.New(cfg, logger, db, auth.New(db, cfg, mail.New(cfg)), users.New(db), listings.New(db), locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, logs)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler, ReadHeaderTimeout: cfg.ReadHeaderTimeout, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 * 1024, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	ok = true
 	return &App{server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos}, nil

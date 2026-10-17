@@ -51,7 +51,17 @@ func Wrap(next http.Handler, logger *slog.Logger) http.Handler {
 			if status == 0 {
 				status = 200
 			}
-			logger.Info("http request", "request_id", id, "method", r.Method, "route", r.Pattern, "status", status, "duration_ms", time.Since(started).Milliseconds())
+			// Successful viewer polling must not fill its own recent journal.
+			if r.URL.Path == "/api/admin/logs" && status == http.StatusOK {
+				return
+			}
+			level := slog.LevelInfo
+			if status >= 500 {
+				level = slog.LevelError
+			} else if status >= 400 {
+				level = slog.LevelWarn
+			}
+			logger.Log(r.Context(), level, "http request", "request_id", id, "method", r.Method, "route", r.Pattern, "status", status, "duration_ms", time.Since(started).Milliseconds())
 		}()
 		next.ServeHTTP(response, r)
 	})

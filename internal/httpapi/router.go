@@ -12,6 +12,7 @@ import (
 	"dorm-hub/internal/locations"
 	"dorm-hub/internal/media"
 	"dorm-hub/internal/moderation"
+	"dorm-hub/internal/platform/logview"
 	"dorm-hub/internal/stars"
 	"dorm-hub/internal/users"
 	"dorm-hub/web"
@@ -29,6 +30,7 @@ import (
 type API struct {
 	cfg        config.Config
 	logger     *slog.Logger
+	logs       *logview.Buffer
 	db         *pgxpool.Pool
 	auth       *auth.Service
 	users      *users.Service
@@ -41,8 +43,16 @@ type API struct {
 	limiter    *limiter
 }
 
-func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.Service, profiles *users.Service, ads *listings.Service, catalog *locations.Service, fav *favorites.Service, ratings *stars.Service, mod *moderation.Service, photos *media.Service) http.Handler {
-	a := &API{cfg: cfg, logger: logger, db: db, auth: login, users: profiles, listings: ads, locations: catalog, favorites: fav, stars: ratings, moderation: mod, media: photos, limiter: &limiter{items: map[string]bucket{}}}
+func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.Service, profiles *users.Service, ads *listings.Service, catalog *locations.Service, fav *favorites.Service, ratings *stars.Service, mod *moderation.Service, photos *media.Service, logBuffers ...*logview.Buffer) http.Handler {
+	var logs *logview.Buffer
+	if len(logBuffers) > 0 {
+		logs = logBuffers[0]
+	}
+	if logs == nil {
+		logs = logview.New()
+		logger = slog.New(logview.NewHandler(logger.Handler(), logs))
+	}
+	a := &API{cfg: cfg, logger: logger, logs: logs, db: db, auth: login, users: profiles, listings: ads, locations: catalog, favorites: fav, stars: ratings, moderation: mod, media: photos, limiter: &limiter{items: map[string]bucket{}}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -71,6 +81,7 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("POST /api/me/deletion-code", true, false, a.requestDeletionCode)
 	route("DELETE /api/me", true, false, a.deleteAccount)
 	route("GET /api/statistics", true, false, a.statistics)
+	route("GET /api/admin/logs", true, true, a.applicationLogs)
 	route("GET /api/admin/site-settings", true, true, a.siteSettings)
 	route("PUT /api/admin/site-settings", true, true, a.updateSiteSettings)
 	route("GET /api/admin/listings", true, true, a.reviewQueue)

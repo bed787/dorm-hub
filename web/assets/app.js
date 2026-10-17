@@ -552,6 +552,14 @@ async function crop(index) {
   });
   draw();
 }
+let logViewer = null;
+function stopLogViewer() {
+  logViewer?.stop();
+  logViewer = null;
+}
+function logPanel() {
+  return `<section id="admin-log-panel" class="panel"><h2>Журнал приложения</h2><p class="small muted">Последние 500 сообщений с момента запуска приложения. После перезапуска журнал очищается. Здесь нет журналов PostgreSQL и Caddy.</p><form class="log-controls" data-log-filters><label class="field"><span>Уровень</span><select name="level"><option value="">Все</option><option value="INFO">Информация</option><option value="WARN">Предупреждения и ошибки</option><option value="ERROR">Ошибки</option></select></label><label class="field log-search"><span>Поиск по сообщению или ID запроса</span><input type="search" name="q" maxlength="200" placeholder="Например: 500 или request_id" autocomplete="off"></label><label class="log-auto"><input type="checkbox" name="auto" checked><span>Обновлять каждые 5 секунд</span></label><button class="button secondary" type="button" data-log-refresh>Обновить</button></form><p class="small muted" data-log-state role="status">Загружаем…</p><div class="log-list" data-log-list></div></section>`;
+}
 async function adminView(params, seq) {
   const tab = params.get("tab") || "listings",
     offset = Number(params.get("offset") || 0);
@@ -562,6 +570,7 @@ async function adminView(params, seq) {
     ["users", "Пользователи"],
     ["dorms", "Общежития"],
     ["site", "Доступ к сайту"],
+    ["logs", "Логи"],
   ]
     .map(
       ([v, n]) =>
@@ -585,6 +594,8 @@ async function adminView(params, seq) {
     content = `<div class="panel table-wrap"><table><thead><tr><th>Пользователь</th><th>Состояние</th><th>Регистрация</th><th>Действия</th></tr></thead><tbody>${items.map((u) => `<tr><td><strong>${h(u.nickname)}</strong><div class="small muted">№${u.id}${u.is_admin ? " · администратор" : ""}</div></td><td><span class="pill ${u.blocked ? "red" : u.active ? "" : "gray"}">${u.blocked ? "Заблокирован" : u.active ? "Активен" : "Деактивирован"}</span></td><td>${h(date(u.created_at))}</td><td><div class="account-actions">${!u.is_admin && u.id !== state.me.id ? `<button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="${u.blocked ? "unblock" : "block"}">${u.blocked ? "Разблокировать" : "Заблокировать"}</button><button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="delete">Удалить</button>` : "—"}</div></td></tr>`).join("")}</tbody></table></div>${adminPager(items.length, offset, params)}`;
   } else if (tab === "dorms") {
     content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(d.name)}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
+  } else if (tab === "logs") {
+    content = logPanel();
   } else if (tab === "site") {
     const settings = await api("/admin/site-settings");
     applySiteSettings(settings);
@@ -594,6 +605,13 @@ async function adminView(params, seq) {
     `<div class="page-head"><h1>Модерация</h1></div>${tabs}${content}`,
     seq,
   );
+  if (tab === "logs" && seq === state.seq) {
+    logViewer = DormHubLogs.create({
+      container: document.querySelector("#admin-log-panel"), api,
+      active: () => seq === state.seq && !!state.me?.is_admin,
+      onUnauthorized: () => { void guest(true); toast("Сессия завершена. Войди снова.", true); },
+    });
+  }
 }
 function adminPager(count, offset, params) {
   const p = new URLSearchParams(params),
@@ -603,6 +621,7 @@ function adminPager(count, offset, params) {
   return `<div class="pagination">${offset ? `<a class="button plain" href="#/admin?${h(p.toString())}">← Назад</a>` : ""}${count === 50 ? `<a class="button plain" href="#/admin?${h(n.toString())}">Далее →</a>` : ""}</div>`;
 }
 async function route() {
+  stopLogViewer();
   if (state.maintenance) return maintenanceView();
   const generation = ++routeGeneration;
   try {
@@ -691,6 +710,7 @@ function loginView(code = false) {
 }
 
 function maintenanceView(reason = state.maintenanceReason) {
+  stopLogViewer();
   if (typeof reason === "string") state.maintenanceReason = reason;
   clearTimeout(autosaveTimer);
   if (!state.maintenance) {
@@ -703,6 +723,7 @@ function maintenanceView(reason = state.maintenanceReason) {
   app.innerHTML = `<main class="login"><header class="login-header row between">${brand()}${themeButton()}</header><section class="login-side"><div class="login-box panel"><h1>Технические работы</h1><p class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">${h(state.maintenanceReason || "Сайт временно недоступен.")}</p><p class="small muted">После завершения работ обновите страницу. Действующие сеансы сохраняются.</p><div style="margin-top:24px"><a class="button" href="/">Проверить доступность</a></div><p class="login-legal"><a href="/rules">Правила</a> · <a href="/privacy">Политика обработки ПД</a> · <a href="/consent">Согласие</a></p><p style="margin-top:28px;text-align:right"><a class="small muted" href="/admin-login">Вход администратора</a></p></div></section></main>`;
 }
 async function guest(showLogin = false, goHome = false) {
+  stopLogViewer();
   clearTimeout(autosaveTimer);
   state.editor = null;
   releasePending();
