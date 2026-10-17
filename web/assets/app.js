@@ -1269,7 +1269,7 @@ document.addEventListener("click", async (event) => {
     } else if (action === "complete")
       modal(
         "Завершить объявление",
-        `<form id="complete-form" data-id="${h(id)}"><label class="field"><span>Причина завершения</span><select name="outcome" required><option value="success">Сделка состоялась / нужное найдено</option><option value="no_longer_needed">Передумал / больше не актуально</option></select></label><p class="small muted">Первый вариант учитывается в общем счётчике один раз на объявление.</p><button class="button" type="submit">Завершить</button></form>`,
+        `<form id="complete-form" data-id="${h(id)}"><label class="field"><span>Причина завершения</span><select name="outcome" required><option value="success">Сделка состоялась / нужное найдено</option><option value="no_longer_needed">Передумал / больше не актуально</option></select></label><button class="button" type="submit">Завершить</button></form>`,
       );
     else if (action === "delete-listing")
       modal(
