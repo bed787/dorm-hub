@@ -12,7 +12,7 @@ func TestPublicContentWithoutJavaScript(t *testing.T) {
 	handler := HandlerFor("https://dorm.example")
 	for path, text := range map[string]string{
 		"/":        "студенческая доска объявлений СПбГУ",
-		"/rules":   "За любое нарушение этих правил аккаунт блокируется",
+		"/rules":   "За нарушение правил администрация вправе отклонить или удалить объявление",
 		"/privacy": "При удалении аккаунта удаляются",
 		"/consent": "Просмотр этой страницы сам по себе не означает согласия",
 	} {
