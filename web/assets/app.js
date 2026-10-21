@@ -175,6 +175,14 @@ function moderationNotice(l) {
 function photoURL(id) {
   return "/api/photos/" + encodeURIComponent(id);
 }
+function openPhoto() {
+  const image = document.querySelector("#gallery img");
+  if (!image) return;
+  modal(
+    "Фотография",
+    `<img class="photo-viewer-image" src="${h(image.getAttribute("src"))}" alt="${h(image.alt)}">`,
+  );
+}
 function card(l, scope = "feed") {
   const own = l.author_id === state.me.id;
   return `<article class="listing-card" data-scope="${h(scope)}"><div class="card-media cat-${h(l.category)}"><a href="#/listing/${l.id}" class="${l.photos.length ? "" : "card-placeholder"}" style="${l.photos.length ? "width:100%;height:100%" : ""}" aria-label="${h(l.title || "Без названия")}">${l.photos.length ? `<img src="${photoURL(l.photos[0].id)}" loading="lazy" alt="${h(l.title || "Без названия")}">` : categoryIcons[l.category] || "◇"}</a>${own || scope === "moderation" ? "" : `<button class="icon-button ${l.favorite ? "active" : ""}" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}" aria-label="${l.favorite ? "Убрать из избранного" : "В избранное"}">${l.favorite ? "♥" : "♡"}</button>`}<span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span></div><div class="card-content"><span class="eyebrow muted" style="font-size:9px;letter-spacing:1px">${h(categoryNames[l.category])}</span><h3><a class="listing-card-link" href="#/listing/${l.id}">${h(l.title || "Без названия")}</a></h3><p class="card-description">${h(l.description)}</p><div class="row between wrap"><span class="price">${h(price(l))}</span>${statusBadge(l)}</div><div class="card-loc">⌖ ${h(locationNames[l.location] || l.location)}${l.dorm_name ? " · " + h(l.dorm_name) : ""}</div>${scope === "mine" && l.moderation_comment ? `<p class="small rejection-note">${h(l.moderation_comment)}</p>` : ""}<div class="card-footer"><a href="#/profile/${l.author_id}">${h(l.author_name)}</a><span>${h(ago(l.created_at))}</span></div></div></article>`;
@@ -254,7 +262,7 @@ async function detailView(id, seq) {
     .filter(Boolean)
     .join("");
   mount(
-    `<div class="breadcrumb"><a href="#/feed">← Лента</a> / ${h(categoryNames[l.category])}</div><div class="detail-grid"><section><div class="gallery" id="gallery">${l.photos.length ? `<img src="${photoURL(l.photos[0].id)}" alt="${h(l.title || "Без названия")}">` : categoryIcons[l.category] || "◇"}</div>${l.photos.length > 1 ? `<div class="thumbs">${l.photos.map((p, i) => `<button data-action="gallery" data-photo="${h(p.id)}" aria-label="Фотография ${i + 1}"><img src="${photoURL(p.id)}" alt=""></button>`).join("")}</div>` : ""}<div class="panel" style="margin-top:24px"><h2>Описание</h2><div class="description">${h(l.description)}</div></div></section><section><div class="row wrap"><span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span><span class="pill gray">${h(categoryNames[l.category])}</span>${statusBadge(l)}</div><h1 class="detail-title">${h(l.title || "Без названия")}</h1><div class="detail-price price">${h(price(l))}</div><div class="meta-list"><div><span class="muted">Район</span><strong>${h(locationNames[l.location] || l.location)}</strong></div>${l.dorm_name ? `<div><span class="muted">Общежитие</span><strong>${h(l.dorm_name)}</strong></div>` : ""}<div><span class="muted">Опубликовано</span><span>${h(date(l.created_at))}</span></div></div>${own || state.me.is_admin ? moderationNotice(l) : ""}<div class="stack">${own ? `<a class="button" href="#/edit/${l.id}">Редактировать</a>${l.status === "active" ? `<button class="button secondary" data-action="complete" data-id="${l.id}">Завершить объявление</button>` : l.status === "archived" || l.status === "completed" ? `<button class="button secondary" data-action="transition" data-id="${l.id}" data-transition="submit" ${l.hidden ? "disabled" : ""}>Отправить на проверку</button>` : ""}${l.status !== "archived" ? `<button class="button plain" data-action="transition" data-id="${l.id}" data-transition="archive">Отложить в архив</button>` : ""}<button class="button plain danger-text" data-action="delete-listing" data-id="${l.id}">Удалить объявление</button>` : `${l.status === "active" || (state.me.is_admin && l.status === "pending") ? contacts : `<div class="notice">${l.status === "completed" ? "Автор завершил это объявление." : "Объявление доступно только автору и модератору."}</div>`}<button class="button plain" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}">${l.favorite ? "♥ Убрать из избранного" : "♡ Сохранить в избранное"}</button>`}</div><div class="seller"><a class="row" href="#/profile/${l.author_id}"><div class="avatar">${h(l.author_name[0])}</div><div><strong>${h(l.author_name)}</strong><div class="small muted">Профиль №${l.author_id} ↗</div></div></a></div><div class="row wrap" style="margin-top:20px">${state.me.is_admin && l.status === "pending" ? `<button class="button" data-action="review-approve" data-id="${l.id}" data-revision="${l.revision}">Одобрить</button><button class="button secondary" data-action="review-reject" data-id="${l.id}" data-revision="${l.revision}">Отклонить</button>` : ""}${!own ? `<button class="small muted" data-action="report" data-kind="listing" data-id="${l.id}">Пожаловаться</button>` : ""}${state.me.is_admin ? `<button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="${l.hidden ? "show" : "hide"}">${l.hidden ? "Показать" : "Скрыть"}</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="delete">Удалить</button>` : ""}</div></section></div>`,
+    `<div class="breadcrumb"><a href="#/feed">← Лента</a> / ${h(categoryNames[l.category])}</div><div class="detail-grid"><section><div class="gallery" id="gallery">${l.photos.length ? `<button type="button" class="gallery-open" data-action="open-photo" aria-label="Открыть фотографию целиком"><img src="${photoURL(l.photos[0].id)}" alt="${h(l.title || "Без названия")}"></button>` : categoryIcons[l.category] || "◇"}</div>${l.photos.length > 1 ? `<div class="thumbs">${l.photos.map((p, i) => `<button data-action="gallery" data-photo="${h(p.id)}" aria-label="Фотография ${i + 1}"><img src="${photoURL(p.id)}" alt=""></button>`).join("")}</div>` : ""}<div class="panel" style="margin-top:24px"><h2>Описание</h2><div class="description">${h(l.description)}</div></div></section><section><div class="row wrap"><span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span><span class="pill gray">${h(categoryNames[l.category])}</span>${statusBadge(l)}</div><h1 class="detail-title">${h(l.title || "Без названия")}</h1><div class="detail-price price">${h(price(l))}</div><div class="meta-list"><div><span class="muted">Район</span><strong>${h(locationNames[l.location] || l.location)}</strong></div>${l.dorm_name ? `<div><span class="muted">Общежитие</span><strong>${h(l.dorm_name)}</strong></div>` : ""}<div><span class="muted">Опубликовано</span><span>${h(date(l.created_at))}</span></div></div>${own || state.me.is_admin ? moderationNotice(l) : ""}<div class="stack">${own ? `<a class="button" href="#/edit/${l.id}">Редактировать</a>${l.status === "active" ? `<button class="button secondary" data-action="complete" data-id="${l.id}">Завершить объявление</button>` : l.status === "archived" || l.status === "completed" ? `<button class="button secondary" data-action="transition" data-id="${l.id}" data-transition="submit" ${l.hidden ? "disabled" : ""}>Отправить на проверку</button>` : ""}${l.status !== "archived" ? `<button class="button plain" data-action="transition" data-id="${l.id}" data-transition="archive">Отложить в архив</button>` : ""}<button class="button plain danger-text" data-action="delete-listing" data-id="${l.id}">Удалить объявление</button>` : `${l.status === "active" || (state.me.is_admin && l.status === "pending") ? contacts : `<div class="notice">${l.status === "completed" ? "Автор завершил это объявление." : "Объявление доступно только автору и модератору."}</div>`}<button class="button plain" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}">${l.favorite ? "♥ Убрать из избранного" : "♡ Сохранить в избранное"}</button>`}</div><div class="seller"><a class="row" href="#/profile/${l.author_id}"><div class="avatar">${h(l.author_name[0])}</div><div><strong>${h(l.author_name)}</strong><div class="small muted">Профиль №${l.author_id} ↗</div></div></a></div><div class="row wrap" style="margin-top:20px">${state.me.is_admin && l.status === "pending" ? `<button class="button" data-action="review-approve" data-id="${l.id}" data-revision="${l.revision}">Одобрить</button><button class="button secondary" data-action="review-reject" data-id="${l.id}" data-revision="${l.revision}">Отклонить</button>` : ""}${!own ? `<button class="small muted" data-action="report" data-kind="listing" data-id="${l.id}">Пожаловаться</button>` : ""}${state.me.is_admin ? `<button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="${l.hidden ? "show" : "hide"}">${l.hidden ? "Показать" : "Скрыть"}</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="delete">Удалить</button>` : ""}</div></section></div>`,
     seq,
   );
 }
@@ -324,7 +332,7 @@ async function formView(id, seq) {
       vk: state.me.vk,
     };
   mount(
-    `<div class="page-head"><h1>${l ? "Редактировать объявление" : "Новое объявление"}</h1><p id="autosave-status" class="small muted" role="status">Черновик сохраняется автоматически в архив.</p></div>${l ? moderationNotice(l) : ""}<form id="listing-form" class="panel" style="max-width:950px"><div class="form-section"><h2>Основное</h2></div><div class="form-grid"><label class="field"><span>Тип</span><select name="kind">${option("offer", "Предложение", v.kind) + option("request", "Заявка", v.kind)}</select></label><label class="field"><span>Категория</span><select name="category" required>${options(state.catalog.categories, v.category)}</select></label><label class="field full"><span>Название</span><input name="title" minlength="3" maxlength="120" value="${h(v.title)}" required placeholder="Например, настольная лампа для комнаты"></label><label class="field full"><span>Описание</span><textarea name="description" minlength="10" maxlength="10000" required placeholder="Состояние, подробности, условия передачи или помощи…">${h(v.description)}</textarea></label><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, v.location)}</select></label><label class="field"><span>Общежитие · необязательно</span><select name="dorm_id" ${!locationNames[v.location] || v.location === "UNSPECIFIED" ? "disabled" : ""}>${dormOptions(v.location, v.dorm_id)}</select></label><label class="field"><span>Стоимость</span><select name="price_mode">${option("unset", "Не указано", v.price_mode) + option("price", "Цена", v.price_mode) + option("exchange", "Обмен", v.price_mode)}</select></label><label class="field" id="price-field" ${v.price_mode !== "price" ? "hidden" : ""}><span>Цена, ₽</span><input name="price" type="text" inputmode="decimal" value="${recover && recovery.raw_price !== undefined ? h(recovery.raw_price) : v.price_minor != null ? h(v.price_minor / 100) : ""}" placeholder="0,00"><span class="hint">0 — бесплатно.</span></label></div><div class="form-section" style="margin-top:28px"><h2>Фотографии</h2><p>До 10 JPEG или PNG, до 5 МБ и 16 мегапикселей каждая. Первая — обложка.</p></div><div id="photo-list" class="photo-list"></div><label class="upload"><strong>＋ Добавить фотографии</strong><span class="small muted">Обрезку можно настроить для каждой фотографии.</span><input id="photo-input" type="file" accept="image/jpeg,image/png" multiple></label><div class="form-section" style="margin-top:28px"><h2>Контакты</h2><p>Укажи хотя бы один контакт для отправки на проверку. Контакт будет виден авторизованным участникам в объявлении. Профиль заполнять необязательно; изменения здесь относятся только к этому объявлению.</p></div><div class="form-grid"><label class="field"><span>Telegram</span><input type="text" name="telegram" maxlength="300" value="${h(v.telegram)}" placeholder="@username или https://t.me/username"></label><label class="field"><span>VK</span><input type="text" name="vk" maxlength="300" value="${h(v.vk)}" placeholder="username или https://vk.com/username"></label></div><div class="form-actions"><button class="button" type="submit">${l?.status === "completed" ? "Сохранить изменения" : "Отправить на проверку"}</button><button class="button secondary" type="submit" name="save_mode" value="draft" formnovalidate>Сохранить в архив</button><a class="button plain" href="#/mine?status=archived">Закрыть</a><span class="small muted">Для черновика контакт не требуется.</span></div></form>`,
+    `<div class="page-head"><h1>${l ? "Редактировать объявление" : "Новое объявление"}</h1><p id="autosave-status" class="small muted" role="status">Черновик сохраняется автоматически в архив.</p></div>${l ? moderationNotice(l) : ""}<form id="listing-form" class="panel" style="max-width:950px"><div class="form-section"><h2>Основное</h2></div><div class="form-grid"><label class="field"><span>Тип</span><select name="kind">${option("offer", "Предложение", v.kind) + option("request", "Заявка", v.kind)}</select></label><label class="field"><span>Категория</span><select name="category" required>${options(state.catalog.categories, v.category)}</select></label><label class="field full"><span>Название</span><input name="title" minlength="3" maxlength="120" value="${h(v.title)}" required placeholder="Например, настольная лампа для комнаты"></label><label class="field full"><span>Описание</span><textarea name="description" minlength="10" maxlength="10000" required placeholder="Состояние, подробности, условия передачи или помощи…">${h(v.description)}</textarea></label><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, v.location)}</select></label><label class="field"><span>Общежитие · необязательно</span><select name="dorm_id" ${!locationNames[v.location] || v.location === "UNSPECIFIED" ? "disabled" : ""}>${dormOptions(v.location, v.dorm_id)}</select></label><label class="field"><span>Стоимость</span><select name="price_mode">${option("unset", "Не указано", v.price_mode) + option("price", "Цена", v.price_mode) + option("exchange", "Обмен", v.price_mode)}</select></label><label class="field" id="price-field" ${v.price_mode !== "price" ? "hidden" : ""}><span>Цена, ₽</span><input name="price" type="text" inputmode="decimal" value="${recover && recovery.raw_price !== undefined ? h(recovery.raw_price) : v.price_minor != null ? h(v.price_minor / 100) : ""}" placeholder="0,00"><span class="hint">0 — бесплатно.</span></label></div><div class="form-section" style="margin-top:28px"><h2>Фотографии</h2><p>До 10 фотографий JPEG или PNG. Большие фотографии сжимаются автоматически. Первая — обложка.</p></div><div id="photo-list" class="photo-list"></div><label class="upload"><strong>＋ Добавить фотографии</strong><span class="small muted">Обрезку можно настроить для каждой фотографии.</span><input id="photo-input" type="file" accept="image/jpeg,image/png" multiple></label><div class="form-section" style="margin-top:28px"><h2>Контакты</h2><p>Укажи хотя бы один контакт для отправки на проверку. Контакт будет виден авторизованным участникам в объявлении. Профиль заполнять необязательно; изменения здесь относятся только к этому объявлению.</p></div><div class="form-grid"><label class="field"><span>Telegram</span><input type="text" name="telegram" maxlength="300" value="${h(v.telegram)}" placeholder="@username или https://t.me/username"></label><label class="field"><span>VK</span><input type="text" name="vk" maxlength="300" value="${h(v.vk)}" placeholder="username или https://vk.com/username"></label></div><div class="form-actions"><button class="button" type="submit">${l?.status === "completed" ? "Сохранить изменения" : "Отправить на проверку"}</button><button class="button secondary" type="submit" name="save_mode" value="draft" formnovalidate>Сохранить в архив</button><a class="button plain" href="#/mine?status=archived">Закрыть</a><span class="small muted">Для черновика контакт не требуется.</span></div></form>`,
     seq,
   );
   state.editor = {
@@ -376,6 +384,13 @@ function renderPhotos() {
   const form = target.closest("form");
   if (form?.dataset.busy) lockControls(form);
 }
+const photoLimits = {
+  uploadBytes: 5 * 1024 * 1024,
+  sourceBytes: 50 * 1024 * 1024,
+  sourcePixels: 64000000,
+  sourceSide: 16000,
+  longSide: 1920,
+};
 function queuePhotos(files) {
   const selected = Array.from(files),
     seq = state.seq,
@@ -391,22 +406,17 @@ async function addPhotos(files, seq, pending) {
       toast("Можно добавить не больше 10 фотографий", true);
       break;
     }
-    if (
-      !["image/jpeg", "image/png"].includes(file.type) ||
-      file.size > 5 * 1024 * 1024
-    ) {
-      toast("Допустимы JPEG и PNG до 5 МБ", true);
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      toast("Допустимы фотографии JPEG и PNG", true);
+      continue;
+    }
+    if (file.size > photoLimits.sourceBytes) {
+      toast("Исходная фотография должна быть не больше 50 МБ", true);
       continue;
     }
     const url = URL.createObjectURL(file);
     try {
       const image = await imageFrom(url);
-      if (
-        image.width * image.height > 16000000 ||
-        image.width > 12000 ||
-        image.height > 12000
-      )
-        throw new Error("Лимит изображения — 16 мегапикселей");
       const normalized = await normalizePhoto(image);
       if (seq !== state.seq || pending !== state.pending) return;
       pending.push({ file: normalized, url: URL.createObjectURL(normalized) });
@@ -422,25 +432,51 @@ async function addPhotos(files, seq, pending) {
     scheduleAutosave();
   }
 }
-function normalizePhoto(image) {
-  const scale = Math.min(1, 1920 / Math.max(image.width, image.height)),
-    canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
-  const context = canvas.getContext("2d");
-  context.fillStyle = "#fff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+function canvasJPEG(canvas, quality) {
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
-        blob
+        blob && blob.size && blob.type === "image/jpeg"
           ? resolve(blob)
           : reject(new Error("Не удалось обработать фотографию")),
       "image/jpeg",
-      0.95,
+      quality,
     ),
   );
+}
+async function normalizePhoto(image) {
+  const width = image.naturalWidth || image.width,
+    height = image.naturalHeight || image.height;
+  if (
+    !Number.isFinite(width) || !Number.isFinite(height) ||
+    width < 1 || height < 1 ||
+    width > photoLimits.sourceSide || height > photoLimits.sourceSide ||
+    width * height > photoLimits.sourcePixels
+  )
+    throw new Error("Исходная фотография должна быть не больше 64 мегапикселей и 16000 пикселей по стороне");
+  const canvas = document.createElement("canvas");
+  let scale = Math.min(1, photoLimits.longSide / Math.max(width, height));
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Не удалось обработать фотографию");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.9, 0.8, 0.7]) {
+        const blob = await canvasJPEG(canvas, quality);
+        if (blob.size <= photoLimits.uploadBytes) return blob;
+      }
+      scale *= 0.75;
+    }
+    throw new Error("Не удалось сжать фотографию до 5 МБ");
+  } finally {
+    canvas.width = canvas.height = 1;
+  }
 }
 function imageFrom(url) {
   return new Promise((resolve, reject) => {
@@ -1252,7 +1288,8 @@ document.addEventListener("click", async (event) => {
       });
       toast("Статус обновлён");
       await route();
-    } else if (action === "gallery") {
+    } else if (action === "open-photo") openPhoto();
+    else if (action === "gallery") {
       const image = document.querySelector("#gallery img");
       if (image) image.src = photoURL(photo);
     } else if (action === "report")
