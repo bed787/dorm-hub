@@ -19,7 +19,7 @@ func Validate(in Input) error {
 		return domain.Invalid("Выберите категорию")
 	}
 	if in.Location == "" {
-		return domain.Invalid("Выберите район")
+		return domain.Invalid("Выберите местоположение")
 	}
 	if utf8.RuneCountInString(in.Title) < 3 {
 		return domain.Invalid("Название: от 3 до 120 символов")
@@ -39,8 +39,17 @@ func ValidateDraft(in Input) error {
 	if in.Category != "" && !oneOf(in.Category, "things", "study", "help", "housing", "other") {
 		return domain.Invalid("Выберите категорию")
 	}
-	if in.Location != "" && !oneOf(in.Location, "VASILEOSTROVSKY", "PETRODVORTSOVY", "NEVSKY") {
-		return domain.Invalid("Выберите район")
+	if in.Location != "" && !oneOf(in.Location, "VASILEOSTROVSKY", "PETRODVORTSOVY", "NEVSKY", "EXTERNAL") {
+		return domain.Invalid("Выберите местоположение")
+	}
+	if utf8.RuneCountInString(in.Address) > 300 || strings.ContainsRune(in.Address, 0) {
+		return domain.Invalid("Адрес: не больше 300 символов без недопустимых знаков")
+	}
+	if in.Address != "" && in.Location != "EXTERNAL" {
+		return domain.Invalid("Свой адрес можно указать вне УНК университета")
+	}
+	if in.Location == "EXTERNAL" && in.DormID != nil {
+		return domain.Invalid("Для адреса вне УНК общежитие не выбирается")
 	}
 	if utf8.RuneCountInString(in.Title) > 120 {
 		return domain.Invalid("Название: не больше 120 символов")
@@ -76,6 +85,7 @@ func HasContent(in Input) bool {
 func clean(in Input) Input {
 	in.Title = strings.TrimSpace(in.Title)
 	in.Description = strings.TrimSpace(in.Description)
+	in.Address = strings.TrimSpace(in.Address)
 	in.Telegram = users.NormalizeContact(in.Telegram, "t.me")
 	in.VK = users.NormalizeContact(in.VK, "vk.com")
 	return in

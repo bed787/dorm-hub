@@ -179,16 +179,26 @@ test('district changes reset and restrict the dormitory selector', () => {
     {id: 2, location: 'NEVSKY', name: '№ 6 — пр. Солидарности, 27/1'},
   ]};
   const dorm = {innerHTML: '', disabled: true};
-  const form = {id: 'listing-form', dataset: {}, querySelector: () => dorm};
+  const address = {value: '', disabled: true}, dormField = {}, addressField = {};
+  const form = {id: 'listing-form', dataset: {}, querySelector: s => ({'[name="dorm_id"]': dorm, '[name="address"]': address, '#dorm-field': dormField, '#address-field': addressField})[s]};
   const input = {name: 'location', value: 'NEVSKY', closest: (selector) => selector==='#listing-form'?null:form};
   harness.listeners.change({target: input});
   assert.equal(dorm.disabled, false);
   assert.match(dorm.innerHTML, /№ 6/);
   assert.doesNotMatch(dorm.innerHTML, /№ 1/);
   assert.match(dorm.innerHTML, /value=""/);
+  input.value = 'EXTERNAL';
+  harness.listeners.change({target: input});
+  assert.equal(dorm.disabled, true);
+  assert.equal(address.disabled, false);
+  assert.equal(addressField.hidden, false);
+  assert.equal(dormField.hidden, true);
+  address.value = 'Мой адрес';
   input.value = '';
   harness.listeners.change({target: input});
   assert.equal(dorm.disabled, true);
+  assert.equal(address.value, '');
+  assert.equal(address.disabled, true);
   assert.match(dorm.innerHTML, /Сначала выберите район/);
   assert.doesNotMatch(dorm.innerHTML, /№ 6/);
 });

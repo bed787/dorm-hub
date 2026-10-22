@@ -1,6 +1,9 @@
 package listings
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func validInput() Input {
 	return Input{Kind: "offer", Category: "things", Title: "Настольная лампа", Description: "Работает, отдам в кампусе.", Location: "PETRODVORTSOVY", PriceMode: "unset", Telegram: "https://t.me/student"}
@@ -71,5 +74,33 @@ func TestDraftValidationAndPublicationBoundary(t *testing.T) {
 	}
 	if in.Telegram != "https://t.me/student" {
 		t.Fatal(in.Telegram)
+	}
+}
+
+func TestExternalAddressValidation(t *testing.T) {
+	in := validInput()
+	in.Location = "EXTERNAL"
+	for _, address := range []string{"", "Санкт-Петербург, улица Примерная, 10"} {
+		in.Address = address
+		if err := Validate(in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dorm := int64(1)
+	in.DormID = &dorm
+	if err := ValidateDraft(in); err == nil {
+		t.Fatal("external listing accepted a dorm")
+	}
+	in.DormID = nil
+	in.Location = "NEVSKY"
+	if err := ValidateDraft(in); err == nil {
+		t.Fatal("internal listing accepted a custom address")
+	}
+	in.Location = "EXTERNAL"
+	for _, address := range []string{strings.Repeat("Я", 301), "Улица\x00дом"} {
+		in.Address = address
+		if err := ValidateDraft(in); err == nil {
+			t.Fatal("invalid address accepted")
+		}
 	}
 }

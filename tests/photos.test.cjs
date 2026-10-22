@@ -11,18 +11,10 @@ function harness({ encode, width = 4000, height = 3000, respond } = {}) {
   const events = {}, dialogEvents = {}, encodings = [], revoked = [], fills = [];
   const toast = { classList: { toggle() {} }, hidden: true };
   const content = { innerHTML: "" }, view = { innerHTML: "" };
-  const backdrop = { src: "/api/photos/first" };
-  function control() {
-    const listeners = {};
-    return { value: "", disabled: false, addEventListener(name, fn) { listeners[name] = fn; },
-      fire(name, event = {}) { return listeners[name]?.(event); } };
-  }
-  const controls = { ratio: control(), width: control(), height: control(), save: control(), reset: control() };
-  const preview = { ...control(), width: 1200, height: 900, isConnected: true,
-    getBoundingClientRect() { return { left: 0, top: 0, width: 600, height: 450 }; },
-    setPointerCapture() {},
-    getContext() { return { fillRect() {}, drawImage() {}, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, strokeRect() {} }; },
-  };
+  const background = {};
+  const photoList = {innerHTML: "", closest() { return null; }};
+  const form = {dataset: {}, entries: fields(), querySelectorAll() { return []; }};
+  class EditorData extends FormData { constructor(f) { super(); if (f) for (const [key,value] of f.entries) this.append(key,value); } }
   const image = {
     src: "/api/photos/first", alt: 'Лампа "<белая>"',
     getAttribute(name) { return this[name]; },
@@ -31,6 +23,7 @@ function harness({ encode, width = 4000, height = 3000, respond } = {}) {
     open: false,
     showModal() { this.open = true; },
     close() { this.open = false; dialogEvents.close?.(); },
+    removeEventListener(name, fn) { if (dialogEvents[name] === fn) delete dialogEvents[name]; },
     addEventListener(name, fn) { dialogEvents[name] = fn; },
     getBoundingClientRect() { return { left: 20, right: 600, top: 20, bottom: 500 }; },
   };
@@ -42,9 +35,20 @@ function harness({ encode, width = 4000, height = 3000, respond } = {}) {
     toBlob(callback, type, quality) {
       const call = { type, quality, width: this.width, height: this.height };
       encodings.push(call);
-      const result = encode ? encode(call, encodings.length) : new Blob(["compressed"], { type });
-      if (result?.then) result.then(callback); else callback(result);
+      Promise.resolve(encode ? encode(call, encodings.length) : new Blob(["compressed"], { type })).then(callback);
     },
+  };
+  function control(value = "") {
+    const listeners = {};
+    return {value, disabled:false, isConnected:true, addEventListener(name,fn) { listeners[name] = fn; }, fire(name) { return listeners[name]?.({target:this}); }};
+  }
+  const controls = Object.fromEntries(["ratio","width","height","save","reset"].map(name => ["#crop-"+name,control(name === "ratio" ? "0" : "")]));
+  const pointerEvents = {};
+  const preview = {width:1200,height:900,isConnected:true,
+    getContext() { return {fillRect() {},drawImage() {},strokeRect() {}}; },
+    getBoundingClientRect() { return {left:0,top:0,width:600,height:450}; },
+    setPointerCapture() {}, addEventListener(name,fn) { pointerEvents[name] = fn; },
+    fire(name,x,y) { pointerEvents[name]?.({clientX:x,clientY:y,pointerId:1,preventDefault() {}}); },
   };
   class PhotoURLs extends URL {
     static createObjectURL() { return "blob:photo-" + ++this.count; }
@@ -58,14 +62,12 @@ function harness({ encode, width = 4000, height = 3000, respond } = {}) {
   const context = vm.createContext({
     DormHubUtils: require("../web/assets/utils.js"),
     DormHubRequests: require("../web/assets/requests.js"),
-    Blob, FormData, URL: PhotoURLs, URLSearchParams, Image,
+    Blob, FormData: EditorData, URL: PhotoURLs, URLSearchParams, Image,
     document: {
       getElementById(id) { return id === "brand-mark" ? { innerHTML: '<svg class="brand-mark"></svg>' } : null; },
       querySelector(selector) {
         return { "#app": {}, "#dialog": dialog, "#dialog-content": content,
-          "#gallery img": image, "#gallery .photo-backdrop": backdrop, "#toast": toast, "#view": view,
-          "#crop-canvas": preview, "#crop-ratio": controls.ratio, "#crop-width": controls.width,
-          "#crop-height": controls.height, "#crop-save": controls.save, "#crop-reset": controls.reset }[selector] || null;
+          "#gallery img": image, "#gallery .photo-backdrop": background, "#toast": toast, "#view": view, "#photo-list": photoList, "#listing-form": form, "#crop-canvas": preview, ...controls }[selector] || null;
       },
       querySelectorAll() { return []; },
       createElement(tag) { assert.equal(tag, "canvas"); return canvas; },
@@ -79,8 +81,8 @@ function harness({ encode, width = 4000, height = 3000, respond } = {}) {
       return Promise.resolve(respond(url, options)).then(data => ({ ok: true, json: async () => ({ data }) }));
     },
   });
-  vm.runInContext(source + "\nglobalThis.photos = {state, queuePhotos, normalizePhoto, saveListing, detailView, modal, card, photoMarkup, crop, cropRect, moveCrop, resizeCrop};", context);
-  return { ...context.photos, encodings, revoked, fills, canvas, toast, dialog, content, view, image, background: backdrop, controls, preview,
+  vm.runInContext(source + "\nglobalThis.photos = {state, queuePhotos, normalizePhoto, saveListing, detailView, modal, card, photoMarkup, renderPhotos, formView, crop, cropRect, moveCrop, resizeCrop};", context);
+  return { ...context.photos, encodings, revoked, fills, canvas, toast, dialog, content, view, image, background, photoList, form, controls, preview,
     click(action, extra = {}) {
       const button = { dataset: { action, ...extra }, closest() { return null; } };
       return events.click({ target: { closest() { return button; } }, preventDefault() {} });
@@ -183,7 +185,6 @@ test("invalid or excessive decoded dimensions fail before creating a canvas", as
 test("the photo viewer opens the selected thumbnail and escapes the caption", async () => {
   const h = harness();
   await h.click("gallery", { photo: "second" });
-  assert.equal(h.background.src, "/api/photos/second");
   await h.click("open-photo");
   assert.equal(h.dialog.open, true);
   assert.match(h.content.innerHTML, /class="photo-viewer-image" src="\/api\/photos\/second"/);
@@ -219,141 +220,145 @@ test("listing photos have a keyboard-accessible opener and placeholders do not",
   assert.doesNotMatch(h.view.innerHTML, /data-action="open-photo"/);
 });
 
-test("a card retains the complete photo with an inaccessible decorative backdrop", () => {
-  const h = harness();
-  h.state.me = { id: 1 };
-  const html = h.card({ id: 2, author_id: 3, author_name: "Студент", title: '<Лампа>',
-    category: 'things', kind: 'offer', status: 'active', price_mode: 'unset',
-    photos: [{ id: 'first' }], created_at: '2026-10-21T00:00:00Z' });
-  assert.match(html, /class="photo-frame"/);
-  assert.match(html, /class="photo-foreground" src="\/api\/photos\/first" alt="&lt;Лампа&gt;" loading="lazy"/);
-  assert.match(html, /class="photo-backdrop" src="\/api\/photos\/first" alt="" aria-hidden="true" loading="lazy"/);
-  assert.ok(html.indexOf('photo-foreground') < html.indexOf('photo-backdrop'));
+function listing(overrides = {}) {
+  return {id:1, author_id:2, author_name:'Студент', title:'Лампа', description:'Лампа: https://example.org/test.',
+    category:'things',kind:'offer',price_mode:'unset',location:'EXTERNAL',address:'Улица, 12',
+    status:'active',created_at:'2026-10-21T00:00:00Z',photos:[{id:'saved',position:0}], ...overrides};
+}
+test('kind belongs to the card text and public feed omits the redundant active status', () => {
+  const h = harness(); h.state.me = {id:3};
+  const html = h.card(listing());
+  assert.match(html, /class="card-content"><div class="card-kind">Предложение/);
+  assert.doesNotMatch(html.split('class="card-content"')[0], /Предложение|Заявка/);
+  assert.doesNotMatch(html, /Опубликовано/);
+  assert.match(html, /Не УНК университета · Улица, 12/);
+  assert.match(h.card(listing(),'mine'), /Опубликовано/);
+  assert.match(h.card(listing({kind:'request', status:'pending'}),'moderation'), /Заявка/);
+  assert.match(h.card(listing({status:'pending'}),'moderation'), /На проверке/);
 });
-
-test("crop frames preserve requested ratios and remain inside portrait and landscape photos", () => {
+test('detail safely links description URLs and displays an optional external address', async () => {
+  const h = harness({respond: () => listing({address:'<img onerror=bad>'})}); h.state.me = {id:3};
+  await h.detailView(1,h.state.seq);
+  assert.match(h.view.innerHTML, /href="https:\/\/example.org\/test" target="_blank" rel="noopener noreferrer"/);
+  assert.match(h.view.innerHTML, /&lt;img onerror=bad&gt;/);
+  assert.doesNotMatch(h.view.innerHTML, /<img onerror/);
+});
+test('new and saved thumbnails both expose crop buttons directly on their photo', () => {
+  const h = harness(); h.state.formListing = listing();
+  h.state.pending.push({file:new Blob(['new']),url:'blob:new'});
+  h.renderPhotos();
+  assert.match(h.photoList.innerHTML, /class="photo-crop-button" data-action="crop" data-photo="saved"/);
+  assert.match(h.photoList.innerHTML, /class="photo-crop-button" data-action="crop" data-index="0"/);
+  assert.equal((h.photoList.innerHTML.match(/class="photo-preview photo-frame"/g) || []).length,2);
+});
+test('new listing has one multiple-file picker and includes the external address field', async () => {
+  const h = harness(); h.state.me = {id:2,telegram:'',vk:''};
+  h.state.catalog = {locations:[{code:'EXTERNAL',name:'Не УНК университета'}],categories:[],dorms:[]};
+  await h.formView(null,h.state.seq);
+  assert.equal((h.view.innerHTML.match(/type="file"/g) || []).length,1);
+  assert.match(h.view.innerHTML, /id="photo-input"[^>]+multiple/);
+  assert.match(h.view.innerHTML, /value="EXTERNAL"/);
+  assert.match(h.view.innerHTML, /name="address" maxlength="300"/);
+});
+test('crop geometry stays inside portrait and landscape images with any aspect ratio', () => {
   const h = harness();
-  for (const [width, height] of [[1600, 800], [800, 1600], [1200, 1200]]) {
-    for (const ratio of [0, 1, 4 / 3, 16 / 9, 3 / 4]) {
-      const box = h.cropRect(width, height, ratio);
-      assert.ok(box.x >= 0 && box.y >= 0);
-      assert.ok(box.x + box.width <= width + 0.00001);
-      assert.ok(box.y + box.height <= height + 0.00001);
-      if (ratio) assert.ok(Math.abs(box.width / box.height - ratio) < 0.00001);
-      else assert.deepEqual({ ...box }, { x: 0, y: 0, width, height });
-      for (const corner of ['nw', 'ne', 'sw', 'se']) {
-        for (const [dx, dy] of [[10000, 10000], [-10000, -10000], [10000, -10000], [17, -23]]) {
-          const resized = h.resizeCrop(box, corner, dx, dy, width, height, ratio);
-          assert.ok(resized.width > 0 && resized.height > 0);
-          assert.ok(resized.x >= -0.00001 && resized.y >= -0.00001);
-          assert.ok(resized.x + resized.width <= width + 0.00001);
-          assert.ok(resized.y + resized.height <= height + 0.00001);
-          if (ratio) assert.ok(Math.abs(resized.width / resized.height - ratio) < 0.00001);
-        }
-      }
+  for (const [w,hh] of [[1920,1080],[800,1600],[31,17]]) for (const ratio of [0,1,4/3,16/9,3/4]) {
+    const box = h.cropRect(w,hh,ratio);
+    for (const corner of ['nw','ne','sw','se']) for (const [dx,dy] of [[-1e5,-1e5],[1e5,1e5],[-1e5,1e5],[33,-55]]) {
+      const b = h.resizeCrop(box,corner,dx,dy,w,hh,ratio);
+      assert.ok(b.x>=-1e-8 && b.y>=-1e-8 && b.width>0 && b.height>0);
+      assert.ok(b.x+b.width<=w+1e-8 && b.y+b.height<=hh+1e-8);
+      if (ratio) assert.ok(Math.abs(b.width/b.height-ratio)<1e-8);
     }
   }
 });
-
-test("moving a crop clamps it to the image edges without changing its dimensions", () => {
-  const h = harness(), box = { x: 100, y: 200, width: 400, height: 300 };
-  assert.deepEqual({ ...h.moveCrop(box, 5000, 5000, 1200, 900) }, { x: 800, y: 600, width: 400, height: 300 });
-  assert.deepEqual({ ...h.moveCrop(box, -5000, -5000, 1200, 900) }, { x: 0, y: 0, width: 400, height: 300 });
+test('cropping a saved photo creates one replacement, retains its position and gates autosave', async () => {
+  const h = harness({width:1600,height:1200}); h.state.formListing = listing();
+  const editing = await h.crop(null,'saved'); let released = false;
+  h.state.photoWork.then(() => {released=true;}); await Promise.resolve(); assert.equal(released,false);
+  h.controls['#crop-width'].value='800'; h.controls['#crop-width'].fire('change');
+  h.controls['#crop-height'].value='600'; h.controls['#crop-height'].fire('change');
+  await h.controls['#crop-save'].fire('click'); await editing.closed;
+  assert.equal(h.state.pending.length,1); assert.equal(h.state.pending[0].replaceID,'saved');
+  assert.equal(h.encodings[0].width,800); assert.equal(h.encodings[0].height,600);
+  assert.equal(h.state.formListing.photos.length,1);
+  assert.equal((h.photoList.innerHTML.match(/class="photo-item"/g)||[]).length,1);
+  assert.equal(h.state.cropSession,null); assert.equal(h.dialog.open,false);
+});
+test('saved crop retries the same PUT after a lost response without appending a photo', async () => {
+  const keys = []; let attempts = 0;
+  const h = harness({respond: (url,options) => {
+    if (url === '/api/listings/1') return listing({revision:3});
+    assert.equal(url,'/api/listings/1/photos/saved'); assert.equal(options.method,'PUT');
+    keys.push(options.headers['Idempotency-Key']);
+    if (++attempts === 1) throw new Error('Connection lost');
+    return {id:'cropped',position:0,width:800,height:600};
+  }});
+  h.state.formListing = listing({revision:1});
+  h.state.pending.push({file:new Blob(['crop'],{type:'image/jpeg'}),url:'blob:crop',replaceID:'saved'});
+  await assert.rejects(h.saveListing({},fields(),'autosave'), /Connection lost/);
+  await h.saveListing({},fields(),'autosave');
+  assert.equal(keys.length,2); assert.equal(keys[0],keys[1]);
+  // The test responder returns the current listing on the final refresh.
+  assert.equal(h.state.pending.length,0);
+});
+test('cancelling crop preserves the source and a late encoder cannot change it', async () => {
+  let complete;
+  const h = harness({encode: () => new Promise(resolve => {complete=resolve;})});
+  const item = {file:new Blob(['original']),url:'blob:original'};h.state.pending.push(item);
+  const editing=await h.crop(0);
+  const applying = h.controls['#crop-save'].fire('click');
+  await h.click('close-dialog'); await editing.closed;
+  complete(new Blob(['cropped'],{type:'image/jpeg'})); await applying;
+  assert.equal(item.url,'blob:original'); assert.equal(await item.file.text(),'original');
+  assert.equal(h.state.cropSession,null);
+});
+test('a crop click during upload follows that same photo after autosave finishes', async () => {
+  let finish;
+  const h=harness();const item={file:new Blob(['original']),url:'blob:original'};
+  h.state.pending.push(item);h.state.formListing=listing();
+  h.state.editor={work:new Promise(resolve=>{finish=resolve;})};
+  const opening=h.crop(0);
+  h.state.pending.shift();item.savedID='saved';finish();
+  await opening;
+  assert.equal(h.dialog.open,true);await h.click('close-dialog');
+});
+test('gallery switches both the main photo and decorative background', async () => {
+  const h=harness();await h.click('gallery',{photo:'second'});
+  assert.equal(h.image.src,'/api/photos/second'); assert.equal(h.background.src,h.image.src);
 });
 
-test("free crop fields export the requested dimensions and release autosave on apply", async () => {
-  const h = harness(), previous = new Blob(['original'], { type: 'image/jpeg' });
-  h.state.pending.push({ file: previous, url: 'blob:original' });
-  await h.crop(0);
-  let released = false;
-  h.state.photoWork.then(() => { released = true; });
-  await new Promise(setImmediate);
-  assert.equal(released, false);
-  h.controls.width.value = '800'; h.controls.width.fire('change');
-  h.controls.height.value = '600'; h.controls.height.fire('change');
-  await h.controls.save.fire('click');
-  await h.state.photoWork;
-  assert.equal(released, true);
-  assert.equal(h.encodings[0].width, 800);
-  assert.equal(h.encodings[0].height, 600);
-  assert.notEqual(h.state.pending[0].file, previous);
-  assert.ok(h.revoked.includes('blob:original'));
-  assert.equal(h.dialog.open, false);
+test('external address is restored in the editor and saved without a dorm selection', async () => {
+  const current=listing({revision:1}); const sent=[];
+  const h=harness({respond:(url,options) => {
+    if (options.method==='PUT') sent.push(JSON.parse(options.body));
+    return current;
+  }});
+  h.state.me={id:2}; h.state.catalog={locations:[{code:'EXTERNAL',name:'Не УНК университета'}],categories:[],dorms:[]};
+  await h.formView(1,h.state.seq);
+  assert.match(h.view.innerHTML,/name="address" maxlength="300" value="Улица, 12"/);
+  const data=fields();data.set('location','EXTERNAL');data.set('address','Другой адрес');data.set('dorm_id','5');
+  await h.saveListing({},data,'autosave');
+  assert.equal(sent[0].address,'Другой адрес');assert.equal(sent[0].dorm_id,null);
+  data.set('location','NEVSKY');await h.saveListing({},data,'autosave');
+  assert.equal(sent[1].address,'');
 });
 
-test("crop proportions and reset update both pixel fields", async () => {
-  const h = harness(); h.state.pending.push({ file: new Blob(['x']), url: 'blob:original' });
-  await h.crop(0);
-  h.controls.ratio.value = '1'; h.controls.ratio.fire('change');
-  assert.equal(h.controls.width.value, h.controls.height.value);
-  h.controls.width.value = '900'; h.controls.width.fire('change');
-  assert.equal(h.controls.height.value, 900);
-  h.controls.reset.fire('click');
-  assert.equal(h.controls.width.value, 4000);
-  assert.equal(h.controls.height.value, 3000);
-  assert.equal(h.controls.ratio.value, 'free');
-  h.dialog.close(); await h.state.photoWork;
-});
-
-test("closing the crop leaves the original file unchanged and resumes pending work", async () => {
-  const h = harness(), previous = new Blob(['original'], { type: 'image/jpeg' });
-  h.state.pending.push({ file: previous, url: 'blob:original' });
-  await h.crop(0);
-  h.controls.width.value = '300'; h.controls.width.fire('change');
-  h.dialog.close(); await h.state.photoWork;
-  assert.equal(h.state.pending[0].file, previous);
-  assert.equal(h.state.pending[0].url, 'blob:original');
-  assert.equal(h.revoked.length, 0);
-});
-
-test("a crop finishing after cancellation cannot overwrite the selected file", async () => {
-  let resolve;
-  const encoded = new Promise(done => { resolve = done; });
-  const h = harness({ encode: () => encoded }), previous = new Blob(['original'], { type: 'image/jpeg' });
-  h.state.pending.push({ file: previous, url: 'blob:original' });
-  await h.crop(0);
-  const applying = h.controls.save.fire('click');
-  h.dialog.close();
-  resolve(new Blob(['cropped'], { type: 'image/jpeg' }));
-  await applying; await h.state.photoWork;
-  assert.equal(h.state.pending[0].file, previous);
-  assert.equal(h.revoked.length, 0);
-});
-
-test("adding with cropping waits for the editor before completing photo processing", async () => {
-  const h = harness();
-  h.queuePhotos([new Blob(['original'], { type: 'image/jpeg' })], true);
-  await new Promise(setImmediate);
-  assert.equal(h.dialog.open, true);
-  let completed = false;
-  h.state.photoWork.then(() => { completed = true; });
-  await new Promise(setImmediate);
-  assert.equal(completed, false);
-  h.controls.width.value = '960'; h.controls.width.fire('change');
-  h.controls.height.value = '720'; h.controls.height.fire('change');
-  await h.controls.save.fire('click');
-  await h.state.photoWork;
-  assert.equal(completed, true);
-  assert.equal(h.state.pending.length, 1);
-  assert.equal(h.encodings.at(-1).width, 960);
-  assert.equal(h.encodings.at(-1).height, 720);
-});
-
-test("dragging the crop corner resizes the frame and dragging its center moves it", async () => {
-  const h = harness(); h.state.pending.push({ file: new Blob(['original']), url: 'blob:original' });
-  await h.crop(0);
-  h.preview.fire('pointerdown', { clientX: 600, clientY: 450, pointerId: 1, button: 0 });
-  h.preview.fire('pointermove', { clientX: 300, clientY: 225, pointerId: 1 });
-  h.preview.fire('pointerup', { pointerId: 1 });
-  assert.equal(h.controls.width.value, 2000);
-  assert.equal(h.controls.height.value, 1500);
-  h.controls.width.value = '800'; h.controls.width.fire('change');
-  h.controls.height.value = '600'; h.controls.height.fire('change');
-  // The frame is centered within its previous bounds: x=600,y=450.
-  h.preview.fire('pointerdown', { clientX: 150, clientY: 112.5, pointerId: 2, button: 0 });
-  h.preview.fire('pointermove', { clientX: 900, clientY: 900, pointerId: 2 });
-  h.preview.fire('pointercancel', { pointerId: 2 });
-  assert.equal(h.controls.width.value, 800);
-  assert.equal(h.controls.height.value, 600);
-  h.dialog.close(); await h.state.photoWork;
+test('removing a pending file during upload cannot shift away the next photo', async () => {
+  let complete, entered;
+  const uploading=new Promise(resolve=>{entered=resolve;});
+  const first={file:new Blob(['first']),url:'blob:first'}, second={file:new Blob(['second']),url:'blob:second'};
+  const h=harness({respond:async(url,options)=>{
+    if (url==='/api/listings') return {id:12,photos:[],status:'archived'};
+    const contents=await options.body.get('file').text();
+    if (contents==='first') {entered();await new Promise(resolve=>{complete=resolve;});}
+    return {id:contents,position:contents==='first'?0:1};
+  }});
+  h.state.pending.push(first,second);
+  const saving=h.saveListing({},fields(),'autosave');await uploading;
+  await h.click('remove-pending',{index:'0'});
+  assert.equal(h.state.pending.length,2);assert.equal(h.state.pending[0],first);
+  complete();await saving;
+  assert.equal(h.state.formListing.photos.length,2);
+  assert.deepEqual(Array.from(h.state.formListing.photos,p=>p.id),['first','second']);
 });

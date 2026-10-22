@@ -15,7 +15,7 @@ import (
 
 const effective = `l.status`
 const visible = `l.deleted_at IS NULL AND NOT l.hidden AND u.active AND NOT u.blocked AND l.status='active'`
-const selection = `l.id,l.author_id,u.nickname,l.kind,coalesce(l.category,''),l.title,l.description,coalesce(l.location,''),l.dorm_id,coalesce(d.name,''),l.price_mode,l.price_minor,l.telegram,l.vk,` + effective + `,l.completed_at,l.hidden,l.created_at,l.updated_at,l.archive_kind,l.moderation_comment,l.revision,l.completion_reason,
+const selection = `l.id,l.author_id,u.nickname,l.kind,coalesce(l.category,''),l.title,l.description,coalesce(l.location,''),l.address,l.dorm_id,coalesce(d.name,''),l.price_mode,l.price_minor,l.telegram,l.vk,` + effective + `,l.completed_at,l.hidden,l.created_at,l.updated_at,l.archive_kind,l.moderation_comment,l.revision,l.completion_reason,
  EXISTS(SELECT 1 FROM favorites f WHERE f.listing_id=l.id AND f.user_id=$1),
  coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.id,'width',p.width,'height',p.height,'position',p.position) ORDER BY p.position) FROM photos p WHERE p.listing_id=l.id),'[]'::jsonb)`
 const source = ` FROM listings l JOIN users u ON u.id=l.author_id LEFT JOIN dorms d ON d.id=l.dorm_id `
@@ -23,7 +23,7 @@ const source = ` FROM listings l JOIN users u ON u.id=l.author_id LEFT JOIN dorm
 func scan(row pgx.Row) (Listing, error) {
 	var l Listing
 	var photos []byte
-	err := row.Scan(&l.ID, &l.AuthorID, &l.AuthorName, &l.Kind, &l.Category, &l.Title, &l.Description, &l.Location, &l.DormID, &l.DormName, &l.PriceMode, &l.PriceMinor, &l.Telegram, &l.VK, &l.Status, &l.CompletedAt, &l.Hidden, &l.CreatedAt, &l.UpdatedAt, &l.ArchiveKind, &l.ModerationComment, &l.Revision, &l.CompletionReason, &l.Favorite, &photos)
+	err := row.Scan(&l.ID, &l.AuthorID, &l.AuthorName, &l.Kind, &l.Category, &l.Title, &l.Description, &l.Location, &l.Address, &l.DormID, &l.DormName, &l.PriceMode, &l.PriceMinor, &l.Telegram, &l.VK, &l.Status, &l.CompletedAt, &l.Hidden, &l.CreatedAt, &l.UpdatedAt, &l.ArchiveKind, &l.ModerationComment, &l.Revision, &l.CompletionReason, &l.Favorite, &photos)
 	if err != nil {
 		return l, postgres.Error(err)
 	}
@@ -98,8 +98,8 @@ func (s *Service) ListForViewer(ctx context.Context, viewer int64, f Filter, adm
 		add(`l.category=$%d`, f.Category)
 	}
 	if f.Location != "" {
-		if !oneOf(f.Location, "VASILEOSTROVSKY", "PETRODVORTSOVY", "NEVSKY") {
-			return page, domain.Invalid("Неверный район")
+		if !oneOf(f.Location, "VASILEOSTROVSKY", "PETRODVORTSOVY", "NEVSKY", "EXTERNAL") {
+			return page, domain.Invalid("Неверное местоположение")
 		}
 		add(`l.location=$%d`, f.Location)
 	}
@@ -240,7 +240,7 @@ func (s *Service) CreateOnce(ctx context.Context, author int64, in Input, key st
 		return Listing{}, err
 	}
 	var id int64
-	err = tx.QueryRow(ctx, `INSERT INTO listings(author_id,kind,category,title,description,location,dorm_id,price_mode,price_minor,telegram,vk,status,archive_kind) VALUES($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),$7,$8,$9,$10,$11,$12,$13) RETURNING id`, author, in.Kind, in.Category, in.Title, in.Description, in.Location, in.DormID, in.PriceMode, in.PriceMinor, in.Telegram, in.VK, status, archive).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO listings(author_id,kind,category,title,description,location,dorm_id,price_mode,price_minor,telegram,vk,status,archive_kind,address) VALUES($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`, author, in.Kind, in.Category, in.Title, in.Description, in.Location, in.DormID, in.PriceMode, in.PriceMinor, in.Telegram, in.VK, status, archive, in.Address).Scan(&id)
 	if err != nil {
 		return Listing{}, postgres.Error(err)
 	}
@@ -302,7 +302,7 @@ func (s *Service) Update(ctx context.Context, id, author int64, in Input) (Listi
 			status, archive = "pending", ""
 		}
 	}
-	_, err = tx.Exec(ctx, `UPDATE listings SET kind=$3,category=NULLIF($4,''),title=$5,description=$6,location=NULLIF($7,''),dorm_id=$8,price_mode=$9,price_minor=$10,telegram=$11,vk=$12,status=$13,archive_kind=$14,revision=revision+1,updated_at=now() WHERE id=$1 AND author_id=$2`, id, author, in.Kind, in.Category, in.Title, in.Description, in.Location, in.DormID, in.PriceMode, in.PriceMinor, in.Telegram, in.VK, status, archive)
+	_, err = tx.Exec(ctx, `UPDATE listings SET kind=$3,category=NULLIF($4,''),title=$5,description=$6,location=NULLIF($7,''),dorm_id=$8,price_mode=$9,price_minor=$10,telegram=$11,vk=$12,status=$13,archive_kind=$14,address=$15,revision=revision+1,updated_at=now() WHERE id=$1 AND author_id=$2`, id, author, in.Kind, in.Category, in.Title, in.Description, in.Location, in.DormID, in.PriceMode, in.PriceMinor, in.Telegram, in.VK, status, archive, in.Address)
 	if err != nil {
 		return Listing{}, postgres.Error(err)
 	}
@@ -367,7 +367,7 @@ func (s *Service) TransitionWithOutcome(ctx context.Context, id, author int64, a
 		if err != nil {
 			return Listing{}, err
 		}
-		in := Input{Kind: l.Kind, Category: l.Category, Title: l.Title, Description: l.Description, Location: l.Location, DormID: l.DormID, PriceMode: l.PriceMode, PriceMinor: l.PriceMinor, Telegram: l.Telegram, VK: l.VK}
+		in := Input{Kind: l.Kind, Category: l.Category, Title: l.Title, Description: l.Description, Location: l.Location, Address: l.Address, DormID: l.DormID, PriceMode: l.PriceMode, PriceMinor: l.PriceMinor, Telegram: l.Telegram, VK: l.VK}
 		if err = Validate(in); err != nil {
 			return Listing{}, err
 		}

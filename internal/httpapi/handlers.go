@@ -303,7 +303,7 @@ func (a *API) uploadPhoto(w http.ResponseWriter, r *http.Request, s auth.Session
 	if err = idempotency.Validate(key); err != nil {
 		return err
 	}
-	photo, err := a.media.UploadFrom(r.Context(), id, s.User.ID, key, func() ([]byte, error) {
+	read := func() ([]byte, error) {
 		r.Body = http.MaxBytesReader(w, r.Body, media.MaxFileSize+1024*1024)
 		if err := r.ParseMultipartForm(media.MaxFileSize); err != nil {
 			if r.MultipartForm != nil {
@@ -318,11 +318,21 @@ func (a *API) uploadPhoto(w http.ResponseWriter, r *http.Request, s auth.Session
 		}
 		defer file.Close()
 		return io.ReadAll(io.LimitReader(file, media.MaxFileSize+1))
-	})
+	}
+	var photo listings.Photo
+	if r.Method == http.MethodPut {
+		photo, err = a.media.ReplaceFrom(r.Context(), id, s.User.ID, r.PathValue("photo"), key, read)
+	} else {
+		photo, err = a.media.UploadFrom(r.Context(), id, s.User.ID, key, read)
+	}
 	if err != nil {
 		return err
 	}
-	respond(w, 201, photo)
+	status := http.StatusCreated
+	if r.Method == http.MethodPut {
+		status = http.StatusOK
+	}
+	respond(w, status, photo)
 	return nil
 }
 func (a *API) deletePhoto(w http.ResponseWriter, r *http.Request, s auth.Session) error {

@@ -226,7 +226,7 @@ func TestDistrictMigrationPreservesListingsAndSeedsDorms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Locations) != 3 {
+	if len(catalog.Locations) != 4 {
 		t.Fatalf("districts: %+v", catalog.Locations)
 	}
 	counts := map[string]int{}

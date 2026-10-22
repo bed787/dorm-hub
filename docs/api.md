@@ -28,8 +28,9 @@ localhost или частный/loopback/link-local IP; схема и порт �
 
 ## Объявления
 
-Создание/обновление: `kind,category,title,description,location,dorm_id,price_mode,
+Создание/обновление: `kind,category,title,description,location,address,dorm_id,price_mode,
 price_minor,telegram,vk,draft,revision,has_photos`.
+`location=EXTERNAL` — «Не УНК университета»: `address` необязателен, до 300 символов, `dorm_id=null`. Для остальных локаций `address` должен быть пустым.
 `draft=true` допускает неполные поля. При отправке на проверку нужен хотя бы один
 валидный HTTPS-контакт в объявлении. Полная ссылка, `@username` Telegram
 или имя страницы VK нормализуются сервером перед сохранением. Цена — целое число копеек; 0 — бесплатно.
@@ -48,8 +49,11 @@ price_minor,telegram,vk,draft,revision,has_photos`.
 | DELETE /api/listings/{id}/favorite | Убрать из избранного |
 | POST /api/listings/{id}/photos | multipart file, Idempotency-Key |
 | PUT /api/listings/{id}/photos | `{ids:[...]}` — порядок/обложка |
+| PUT /api/listings/{id}/photos/{photo} | multipart file, Idempotency-Key — заменить фото с сохранением позиции; возвращает новый ID |
 | DELETE /api/listings/{id}/photos/{photo} | Удалить фото |
 | GET /api/photos/{photo} | Фото с теми же правами, что карточка |
+
+Замена фото атомарна: старый файл ставится в очередь удаления только вместе с успешным сохранением нового. Замена учитывает разницу размеров в квоте и доступна при 10 фото в объявлении. Повтор с тем же ключом и телом возвращает прежний результат. Правки фотографии требуют повторной модерации.
 
 `complete` требует `outcome:"success"` или `"no_longer_needed"`.
 `submit` полностью проверяет поля и ставит приватное объявление в очередь.

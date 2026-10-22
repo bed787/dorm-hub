@@ -31,7 +31,7 @@ func (s *Service) Catalog(ctx context.Context) (Catalog, error) {
 	for _, source := range []struct {
 		query  string
 		target *[]Item
-	}{{`SELECT code,name FROM locations WHERE code IN ('VASILEOSTROVSKY','PETRODVORTSOVY','NEVSKY') ORDER BY CASE code WHEN 'VASILEOSTROVSKY' THEN 1 WHEN 'PETRODVORTSOVY' THEN 2 ELSE 3 END`, &c.Locations}, {`SELECT code,name FROM categories ORDER BY CASE code WHEN 'things' THEN 1 WHEN 'study' THEN 2 WHEN 'help' THEN 3 WHEN 'housing' THEN 4 ELSE 5 END`, &c.Categories}} {
+	}{{`SELECT code,name FROM locations WHERE code IN ('VASILEOSTROVSKY','PETRODVORTSOVY','NEVSKY','EXTERNAL') ORDER BY CASE code WHEN 'VASILEOSTROVSKY' THEN 1 WHEN 'PETRODVORTSOVY' THEN 2 WHEN 'NEVSKY' THEN 3 ELSE 4 END`, &c.Locations}, {`SELECT code,name FROM categories ORDER BY CASE code WHEN 'things' THEN 1 WHEN 'study' THEN 2 WHEN 'help' THEN 3 WHEN 'housing' THEN 4 ELSE 5 END`, &c.Categories}} {
 		rows, err := s.db.Query(ctx, source.query)
 		if err != nil {
 			return c, err

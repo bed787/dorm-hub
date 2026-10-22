@@ -7,6 +7,7 @@ import (
 	"dorm-hub/internal/listings"
 	"dorm-hub/internal/platform/idempotency"
 	"dorm-hub/internal/platform/postgres"
+	"encoding/hex"
 	"errors"
 	"github.com/jackc/pgx/v5"
 	"strconv"
@@ -38,6 +39,22 @@ func (s *Service) UploadOnce(ctx context.Context, listing, owner int64, data []b
 // Admission happens before reading the request body. At most four uploads can
 // hold their file buffers, including the upload currently being decoded.
 func (s *Service) UploadFrom(ctx context.Context, listing, owner int64, key string, read func() ([]byte, error)) (listings.Photo, error) {
+	return s.uploadFrom(ctx, listing, owner, key, "", read)
+}
+
+// Replace a photo atomically: retain its position and count only the new file
+// towards the quota. A fresh ID prevents a browser from showing the old crop.
+func (s *Service) ReplaceFrom(ctx context.Context, listing, owner int64, photo, key string, read func() ([]byte, error)) (listings.Photo, error) {
+	if len(photo) != 64 {
+		return listings.Photo{}, domain.ErrNotFound
+	}
+	if _, err := hex.DecodeString(photo); err != nil {
+		return listings.Photo{}, domain.ErrNotFound
+	}
+	return s.uploadFrom(ctx, listing, owner, key, photo, read)
+}
+
+func (s *Service) uploadFrom(ctx context.Context, listing, owner int64, key, replacing string, read func() ([]byte, error)) (listings.Photo, error) {
 	if err := ctx.Err(); err != nil {
 		return listings.Photo{}, err
 	}
@@ -56,10 +73,10 @@ func (s *Service) UploadFrom(ctx context.Context, listing, owner int64, key stri
 	if err != nil {
 		return listings.Photo{}, err
 	}
-	return s.upload(ctx, listing, owner, data, key)
+	return s.upload(ctx, listing, owner, data, key, replacing)
 }
 
-func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte, key string) (listings.Photo, error) {
+func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte, key, replacing string) (listings.Photo, error) {
 	if len(data) == 0 || len(data) > MaxFileSize {
 		return listings.Photo{}, domain.Invalid("Размер фотографии должен быть не больше 5 МБ")
 	}
@@ -71,6 +88,9 @@ func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte,
 		return listings.Photo{}, domain.ErrNotFound
 	}
 	scope := "photo.upload:" + strconv.FormatInt(listing, 10)
+	if replacing != "" {
+		scope = "photo.replace:" + strconv.FormatInt(listing, 10) + ":" + replacing
+	}
 	requestHash := idempotency.Hash(data)
 	result, found, err := idempotency.Lookup(ctx, s.db, owner, scope, key, requestHash)
 	if err != nil {
@@ -84,11 +104,16 @@ func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte,
 	if err = s.db.QueryRow(ctx, `SELECT count(*) FROM photos WHERE listing_id=$1`, listing).Scan(&count); err != nil {
 		return listings.Photo{}, err
 	}
-	if count >= 10 {
+	if replacing == "" && count >= 10 {
 		return listings.Photo{}, domain.Conflict("Можно прикрепить не больше 10 фотографий")
 	}
-	if err = s.checkQuota(ctx, s.db, owner, 0); err != nil {
+	if err = s.checkPhotoQuota(ctx, s.db, owner, 0, replacing); err != nil {
 		return listings.Photo{}, err
+	}
+	if replacing != "" {
+		if _, err = savedPhoto(ctx, s.db, listing, replacing); err != nil {
+			return listings.Photo{}, err
+		}
 	}
 	normalized, width, height, err := s.normalize(ctx, data)
 	if err != nil {
@@ -113,11 +138,17 @@ func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte,
 	if err = tx.QueryRow(ctx, `SELECT count(*),coalesce(max(position)+1,0) FROM photos WHERE listing_id=$1`, listing).Scan(&count, &position); err != nil {
 		return listings.Photo{}, err
 	}
-	if count >= 10 {
+	if replacing == "" && count >= 10 {
 		return listings.Photo{}, domain.Conflict("Можно прикрепить не больше 10 фотографий")
 	}
+	var oldName string
+	if replacing != "" {
+		if err = tx.QueryRow(ctx, `SELECT filename,position FROM photos WHERE listing_id=$1 AND id=$2`, listing, replacing).Scan(&oldName, &position); err != nil {
+			return listings.Photo{}, postgres.Error(err)
+		}
+	}
 	// The owner lock serializes quota checks across all of their listings.
-	if err = s.checkQuota(ctx, tx, owner, int64(len(normalized))); err != nil {
+	if err = s.checkPhotoQuota(ctx, tx, owner, int64(len(normalized)), replacing); err != nil {
 		return listings.Photo{}, err
 	}
 	id, err := auth.Token()
@@ -134,6 +165,14 @@ func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte,
 			_ = s.files.Delete(name)
 		}
 	}()
+	if replacing != "" {
+		if _, err = tx.Exec(ctx, `DELETE FROM photos WHERE listing_id=$1 AND id=$2`, listing, replacing); err != nil {
+			return listings.Photo{}, err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO pending_file_deletions(filename) VALUES($1) ON CONFLICT DO NOTHING`, oldName); err != nil {
+			return listings.Photo{}, err
+		}
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO photos(id,listing_id,position,filename,width,height,size_bytes) VALUES($1,$2,$3,$4,$5,$6,$7)`, id, listing, position, name, width, height, len(normalized))
 	if err != nil {
 		return listings.Photo{}, postgres.Error(err)
@@ -153,6 +192,9 @@ func (s *Service) upload(ctx context.Context, listing, owner int64, data []byte,
 		}
 		return listings.Photo{}, err
 	}
+	if replacing != "" {
+		_ = s.FlushDeletions(ctx)
+	}
 	return listings.Photo{ID: id, Width: width, Height: height, Position: position}, nil
 }
 
@@ -162,10 +204,10 @@ func savedPhoto(ctx context.Context, q idempotency.Querier, listing int64, id st
 	return p, postgres.Error(err)
 }
 
-func (s *Service) checkQuota(ctx context.Context, q idempotency.Querier, owner, incoming int64) error {
+func (s *Service) checkPhotoQuota(ctx context.Context, q idempotency.Querier, owner, incoming int64, excluding string) error {
 	var count int
 	var used int64
-	if err := q.QueryRow(ctx, `SELECT count(*),coalesce(sum(p.size_bytes),0)::bigint FROM photos p JOIN listings l ON l.id=p.listing_id WHERE l.author_id=$1`, owner).Scan(&count, &used); err != nil {
+	if err := q.QueryRow(ctx, `SELECT count(*),coalesce(sum(p.size_bytes),0)::bigint FROM photos p JOIN listings l ON l.id=p.listing_id WHERE l.author_id=$1 AND p.id<>$2`, owner, excluding).Scan(&count, &used); err != nil {
 		return err
 	}
 	if count >= s.photoLimit || used >= s.quotaBytes || incoming > s.quotaBytes-used {

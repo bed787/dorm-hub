@@ -17,6 +17,7 @@ type Listing struct {
 	Title             string     `json:"title"`
 	Description       string     `json:"description"`
 	Location          string     `json:"location"`
+	Address           string     `json:"address"`
 	DormID            *int64     `json:"dorm_id"`
 	DormName          string     `json:"dorm_name"`
 	PriceMode         string     `json:"price_mode"`
@@ -44,6 +45,7 @@ type Input struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Location    string `json:"location"`
+	Address     string `json:"address"`
 	DormID      *int64 `json:"dorm_id"`
 	PriceMode   string `json:"price_mode"`
 	PriceMinor  *int64 `json:"price_minor"`

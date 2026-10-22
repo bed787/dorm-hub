@@ -100,6 +100,7 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("DELETE /api/listings/{id}/favorite", true, false, a.favorite)
 	route("POST /api/listings/{id}/photos", true, false, a.uploadPhoto)
 	route("PUT /api/listings/{id}/photos", true, false, a.reorderPhotos)
+	route("PUT /api/listings/{id}/photos/{photo}", true, false, a.uploadPhoto)
 	route("DELETE /api/listings/{id}/photos/{photo}", true, false, a.deletePhoto)
 	route("GET /api/photos/{photo}", true, false, a.getPhoto)
 	route("POST /api/reports", true, false, a.report)
@@ -275,7 +276,7 @@ func (a *API) allowMutation(r *http.Request, user int64) bool {
 	switch r.Pattern {
 	case "POST /api/listings":
 		name, limit = "listing", 30
-	case "POST /api/listings/{id}/photos":
+	case "POST /api/listings/{id}/photos", "PUT /api/listings/{id}/photos/{photo}":
 		name, limit = "photo", 120
 	case "POST /api/me/deletion-code":
 		name, limit = "deletion-code", 10

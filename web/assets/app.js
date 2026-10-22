@@ -1,5 +1,5 @@
 "use strict";
-const { escape: h, minor, price } = DormHubUtils;
+const { escape: h, minor, price, linkify } = DormHubUtils;
 const state = {
   me: null,
   email: "",
@@ -11,6 +11,7 @@ const state = {
   createAttempt: null,
   pending: [],
   photoWork: Promise.resolve(),
+  cropSession: null,
   resendAt: 0,
   editor: null,
   completedDeals: 0,
@@ -37,6 +38,7 @@ const locationNames = {
   VASILEOSTROVSKY: "Василеостровский район",
   PETRODVORTSOVY: "Петродворцовый район",
   NEVSKY: "Невский район",
+  EXTERNAL: "Не УНК университета",
   UNSPECIFIED: "Район нужно уточнить",
 };
 const categoryNames = {
@@ -111,6 +113,7 @@ function options(items, current, empty = "Выберите") {
   );
 }
 function dormOptions(location, current, empty = "Без общежития") {
+  if (location === "EXTERNAL") return option("", "Не требуется", "");
   if (!location) return option("", "Сначала выберите район", "");
   return options(
     state.catalog.dorms.filter((d) => d.location === location),
@@ -119,6 +122,7 @@ function dormOptions(location, current, empty = "Без общежития") {
   );
 }
 function closeDialog() {
+  state.cropSession?.finish();
   dialog.close();
   document.querySelector("#dialog-content").innerHTML = "";
 }
@@ -176,8 +180,10 @@ function photoURL(id) {
   return "/api/photos/" + encodeURIComponent(id);
 }
 function photoMarkup(src, alt, lazy = false) {
-  const loading = lazy ? ' loading="lazy"' : "";
-  return `<img class="photo-foreground" src="${h(src)}" alt="${h(alt)}"${loading}><img class="photo-backdrop" src="${h(src)}" alt="" aria-hidden="true"${loading}>`;
+  return `<img class="photo-foreground" src="${h(src)}" alt="${h(alt)}"${lazy ? ' loading="lazy"' : ''}><img class="photo-backdrop" src="${h(src)}" alt="" aria-hidden="true"${lazy ? ' loading="lazy"' : ''}>`;
+}
+function listingPlace(l) {
+  return [locationNames[l.location] || l.location, l.location === "EXTERNAL" ? l.address : l.dorm_name].filter(Boolean).join(" · ");
 }
 function openPhoto() {
   const image = document.querySelector("#gallery img");
@@ -189,7 +195,7 @@ function openPhoto() {
 }
 function card(l, scope = "feed") {
   const own = l.author_id === state.me.id;
-  return `<article class="listing-card" data-scope="${h(scope)}"><div class="card-media cat-${h(l.category)}"><a href="#/listing/${l.id}" class="${l.photos.length ? "photo-frame" : "card-placeholder"}" style="${l.photos.length ? "width:100%;height:100%" : ""}" aria-label="${h(l.title || "Без названия")}">${l.photos.length ? photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия", true) : categoryIcons[l.category] || "◇"}</a>${own || scope === "moderation" ? "" : `<button class="icon-button ${l.favorite ? "active" : ""}" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}" aria-label="${l.favorite ? "Убрать из избранного" : "В избранное"}">${l.favorite ? "♥" : "♡"}</button>`}<span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span></div><div class="card-content"><span class="eyebrow muted" style="font-size:9px;letter-spacing:1px">${h(categoryNames[l.category])}</span><h3><a class="listing-card-link" href="#/listing/${l.id}">${h(l.title || "Без названия")}</a></h3><p class="card-description">${h(l.description)}</p><div class="row between wrap"><span class="price">${h(price(l))}</span>${statusBadge(l)}</div><div class="card-loc">⌖ ${h(locationNames[l.location] || l.location)}${l.dorm_name ? " · " + h(l.dorm_name) : ""}</div>${scope === "mine" && l.moderation_comment ? `<p class="small rejection-note">${h(l.moderation_comment)}</p>` : ""}<div class="card-footer"><a href="#/profile/${l.author_id}">${h(l.author_name)}</a><span>${h(ago(l.created_at))}</span></div></div></article>`;
+  return `<article class="listing-card" data-scope="${h(scope)}"><div class="card-media cat-${h(l.category)}"><a href="#/listing/${l.id}" class="${l.photos.length ? "photo-frame" : "card-placeholder"}" style="${l.photos.length ? "width:100%;height:100%" : ""}" aria-label="${h(l.title || "Без названия")}">${l.photos.length ? photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия", true) : categoryIcons[l.category] || "◇"}</a>${own || scope === "moderation" ? "" : `<button class="icon-button ${l.favorite ? "active" : ""}" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}" aria-label="${l.favorite ? "Убрать из избранного" : "В избранное"}">${l.favorite ? "♥" : "♡"}</button>`}</div><div class="card-content"><div class="card-kind">${l.kind === "offer" ? "Предложение" : "Заявка"}</div><span class="eyebrow muted" style="font-size:9px;letter-spacing:1px">${h(categoryNames[l.category])}</span><h3><a class="listing-card-link" href="#/listing/${l.id}">${h(l.title || "Без названия")}</a></h3><p class="card-description">${h(l.description)}</p><div class="row between wrap"><span class="price">${h(price(l))}</span>${scope === "feed" && l.status === "active" ? "" : statusBadge(l)}</div><div class="card-loc">⌖ ${h(listingPlace(l))}</div>${scope === "mine" && l.moderation_comment ? `<p class="small rejection-note">${h(l.moderation_comment)}</p>` : ""}<div class="card-footer"><a href="#/profile/${l.author_id}">${h(l.author_name)}</a><span>${h(ago(l.created_at))}</span></div></div></article>`;
 }
 function pager(page, params, base) {
   if (page.total <= page.limit) return "";
@@ -232,7 +238,7 @@ async function feedView(page, params, seq) {
       return `<a class="${(p.get(key) || "") === value ? "selected" : ""}" href="#/${page}?${h(tab.toString())}">${label}</a>`;
     })
     .join("")}</nav>`;
-  head += `<form class="filters" id="filter-form" data-page="${page}"><select name="category" aria-label="Категория">${options(state.catalog.categories, p.get("category"), "Все категории")}</select><select name="location" aria-label="Район">${options(state.catalog.locations, p.get("location"), "Все районы")}</select><select name="dorm_id" aria-label="Общежитие" ${!p.get("location") ? "disabled" : ""}>${dormOptions(p.get("location"), p.get("dorm_id"), "Все общежития")}</select><input type="hidden" name="kind" value="${h(p.get("kind") || "")}"><input type="hidden" name="status" value="${h(p.get("status") || "")}"><input type="hidden" name="q" value="${h(p.get("q") || "")}"><button class="button plain" type="submit">Применить</button>${p.get("q") ? `<a class="button plain" href="#/${page}">Сбросить поиск</a>` : ""}</form>`;
+  head += `<form class="filters" id="filter-form" data-page="${page}"><select name="category" aria-label="Категория">${options(state.catalog.categories, p.get("category"), "Все категории")}</select><select name="location" aria-label="Местоположение">${options(state.catalog.locations, p.get("location"), "Все местоположения")}</select><select name="dorm_id" aria-label="Общежитие" ${!p.get("location") || p.get("location") === "EXTERNAL" ? "disabled" : ""}>${dormOptions(p.get("location"), p.get("dorm_id"), "Все общежития")}</select><input type="hidden" name="kind" value="${h(p.get("kind") || "")}"><input type="hidden" name="status" value="${h(p.get("status") || "")}"><input type="hidden" name="q" value="${h(p.get("q") || "")}"><button class="button plain" type="submit">Применить</button>${p.get("q") ? `<a class="button plain" href="#/${page}">Сбросить поиск</a>` : ""}</form>`;
   mount(
     head +
       `<div class="feed-meta">${p.get("q") ? "По запросу «" + h(p.get("q")) + "» · " : ""}${result.total} объявлений</div>` +
@@ -266,7 +272,7 @@ async function detailView(id, seq) {
     .filter(Boolean)
     .join("");
   mount(
-    `<div class="breadcrumb"><a href="#/feed">← Лента</a> / ${h(categoryNames[l.category])}</div><div class="detail-grid"><section><div class="gallery" id="gallery">${l.photos.length ? `<button type="button" class="gallery-open photo-frame" data-action="open-photo" aria-label="Открыть фотографию целиком">${photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия")}</button>` : categoryIcons[l.category] || "◇"}</div>${l.photos.length > 1 ? `<div class="thumbs">${l.photos.map((p, i) => `<button data-action="gallery" data-photo="${h(p.id)}" aria-label="Фотография ${i + 1}"><img src="${photoURL(p.id)}" alt=""></button>`).join("")}</div>` : ""}<div class="panel" style="margin-top:24px"><h2>Описание</h2><div class="description">${h(l.description)}</div></div></section><section><div class="row wrap"><span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span><span class="pill gray">${h(categoryNames[l.category])}</span>${statusBadge(l)}</div><h1 class="detail-title">${h(l.title || "Без названия")}</h1><div class="detail-price price">${h(price(l))}</div><div class="meta-list"><div><span class="muted">Район</span><strong>${h(locationNames[l.location] || l.location)}</strong></div>${l.dorm_name ? `<div><span class="muted">Общежитие</span><strong>${h(l.dorm_name)}</strong></div>` : ""}<div><span class="muted">Опубликовано</span><span>${h(date(l.created_at))}</span></div></div>${own || state.me.is_admin ? moderationNotice(l) : ""}<div class="stack">${own ? `<a class="button" href="#/edit/${l.id}">Редактировать</a>${l.status === "active" ? `<button class="button secondary" data-action="complete" data-id="${l.id}">Завершить объявление</button>` : l.status === "archived" || l.status === "completed" ? `<button class="button secondary" data-action="transition" data-id="${l.id}" data-transition="submit" ${l.hidden ? "disabled" : ""}>Отправить на проверку</button>` : ""}${l.status !== "archived" ? `<button class="button plain" data-action="transition" data-id="${l.id}" data-transition="archive">Отложить в архив</button>` : ""}<button class="button plain danger-text" data-action="delete-listing" data-id="${l.id}">Удалить объявление</button>` : `${l.status === "active" || (state.me.is_admin && l.status === "pending") ? contacts : `<div class="notice">${l.status === "completed" ? "Автор завершил это объявление." : "Объявление доступно только автору и модератору."}</div>`}<button class="button plain" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}">${l.favorite ? "♥ Убрать из избранного" : "♡ Сохранить в избранное"}</button>`}</div><div class="seller"><a class="row" href="#/profile/${l.author_id}"><div class="avatar">${h(l.author_name[0])}</div><div><strong>${h(l.author_name)}</strong><div class="small muted">Профиль №${l.author_id} ↗</div></div></a></div><div class="row wrap" style="margin-top:20px">${state.me.is_admin && l.status === "pending" ? `<button class="button" data-action="review-approve" data-id="${l.id}" data-revision="${l.revision}">Одобрить</button><button class="button secondary" data-action="review-reject" data-id="${l.id}" data-revision="${l.revision}">Отклонить</button>` : ""}${!own ? `<button class="small muted" data-action="report" data-kind="listing" data-id="${l.id}">Пожаловаться</button>` : ""}${state.me.is_admin ? `<button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="${l.hidden ? "show" : "hide"}">${l.hidden ? "Показать" : "Скрыть"}</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="delete">Удалить</button>` : ""}</div></section></div>`,
+    `<div class="breadcrumb"><a href="#/feed">← Лента</a> / ${h(categoryNames[l.category])}</div><div class="detail-grid"><section><div class="gallery" id="gallery">${l.photos.length ? `<button type="button" class="gallery-open photo-frame" data-action="open-photo" aria-label="Открыть фотографию целиком">${photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия")}</button>` : categoryIcons[l.category] || "◇"}</div>${l.photos.length > 1 ? `<div class="thumbs">${l.photos.map((p, i) => `<button data-action="gallery" data-photo="${h(p.id)}" aria-label="Фотография ${i + 1}"><img src="${photoURL(p.id)}" alt=""></button>`).join("")}</div>` : ""}<div class="panel" style="margin-top:24px"><h2>Описание</h2><div class="description">${linkify(l.description)}</div></div></section><section><div class="row wrap"><span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span><span class="pill gray">${h(categoryNames[l.category])}</span>${statusBadge(l)}</div><h1 class="detail-title">${h(l.title || "Без названия")}</h1><div class="detail-price price">${h(price(l))}</div><div class="meta-list"><div><span class="muted">Местоположение</span><strong>${h(locationNames[l.location] || l.location)}</strong></div>${l.location === "EXTERNAL" && l.address ? `<div><span class="muted">Адрес</span><strong>${h(l.address)}</strong></div>` : ""}${l.dorm_name ? `<div><span class="muted">Общежитие</span><strong>${h(l.dorm_name)}</strong></div>` : ""}<div><span class="muted">Опубликовано</span><span>${h(date(l.created_at))}</span></div></div>${own || state.me.is_admin ? moderationNotice(l) : ""}<div class="stack">${own ? `<a class="button" href="#/edit/${l.id}">Редактировать</a>${l.status === "active" ? `<button class="button secondary" data-action="complete" data-id="${l.id}">Завершить объявление</button>` : l.status === "archived" || l.status === "completed" ? `<button class="button secondary" data-action="transition" data-id="${l.id}" data-transition="submit" ${l.hidden ? "disabled" : ""}>Отправить на проверку</button>` : ""}${l.status !== "archived" ? `<button class="button plain" data-action="transition" data-id="${l.id}" data-transition="archive">Отложить в архив</button>` : ""}<button class="button plain danger-text" data-action="delete-listing" data-id="${l.id}">Удалить объявление</button>` : `${l.status === "active" || (state.me.is_admin && l.status === "pending") ? contacts : `<div class="notice">${l.status === "completed" ? "Автор завершил это объявление." : "Объявление доступно только автору и модератору."}</div>`}<button class="button plain" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}">${l.favorite ? "♥ Убрать из избранного" : "♡ Сохранить в избранное"}</button>`}</div><div class="seller"><a class="row" href="#/profile/${l.author_id}"><div class="avatar">${h(l.author_name[0])}</div><div><strong>${h(l.author_name)}</strong><div class="small muted">Профиль №${l.author_id} ↗</div></div></a></div><div class="row wrap" style="margin-top:20px">${state.me.is_admin && l.status === "pending" ? `<button class="button" data-action="review-approve" data-id="${l.id}" data-revision="${l.revision}">Одобрить</button><button class="button secondary" data-action="review-reject" data-id="${l.id}" data-revision="${l.revision}">Отклонить</button>` : ""}${!own ? `<button class="small muted" data-action="report" data-kind="listing" data-id="${l.id}">Пожаловаться</button>` : ""}${state.me.is_admin ? `<button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="${l.hidden ? "show" : "hide"}">${l.hidden ? "Показать" : "Скрыть"}</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="delete">Удалить</button>` : ""}</div></section></div>`,
     seq,
   );
 }
@@ -336,7 +342,7 @@ async function formView(id, seq) {
       vk: state.me.vk,
     };
   mount(
-    `<div class="page-head"><h1>${l ? "Редактировать объявление" : "Новое объявление"}</h1><p id="autosave-status" class="small muted" role="status">Черновик сохраняется автоматически в архив.</p></div>${l ? moderationNotice(l) : ""}<form id="listing-form" class="panel" style="max-width:950px"><div class="form-section"><h2>Основное</h2></div><div class="form-grid"><label class="field"><span>Тип</span><select name="kind">${option("offer", "Предложение", v.kind) + option("request", "Заявка", v.kind)}</select></label><label class="field"><span>Категория</span><select name="category" required>${options(state.catalog.categories, v.category)}</select></label><label class="field full"><span>Название</span><input name="title" minlength="3" maxlength="120" value="${h(v.title)}" required placeholder="Например, настольная лампа для комнаты"></label><label class="field full"><span>Описание</span><textarea name="description" minlength="10" maxlength="10000" required placeholder="Состояние, подробности, условия передачи или помощи…">${h(v.description)}</textarea></label><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, v.location)}</select></label><label class="field"><span>Общежитие · необязательно</span><select name="dorm_id" ${!locationNames[v.location] || v.location === "UNSPECIFIED" ? "disabled" : ""}>${dormOptions(v.location, v.dorm_id)}</select></label><label class="field"><span>Стоимость</span><select name="price_mode">${option("unset", "Не указано", v.price_mode) + option("price", "Цена", v.price_mode) + option("exchange", "Обмен", v.price_mode)}</select></label><label class="field" id="price-field" ${v.price_mode !== "price" ? "hidden" : ""}><span>Цена, ₽</span><input name="price" type="text" inputmode="decimal" value="${recover && recovery.raw_price !== undefined ? h(recovery.raw_price) : v.price_minor != null ? h(v.price_minor / 100) : ""}" placeholder="0,00"><span class="hint">0 — бесплатно.</span></label></div><div class="form-section" style="margin-top:28px"><h2>Фотографии</h2><p>До 10 фотографий JPEG или PNG. Большие фотографии сжимаются автоматически. Первая — обложка.</p></div><div id="photo-list" class="photo-list"></div><label class="upload"><strong>＋ Добавить фотографии</strong><span class="small muted">Обрезку можно настроить для каждой фотографии.</span><input id="photo-input" type="file" accept="image/jpeg,image/png" multiple></label><label class="upload upload-crop"><strong>Добавить с обрезкой</strong><span class="small muted">Выбери одну фотографию и настрой кадр перед сохранением.</span><input id="photo-crop-input" type="file" accept="image/jpeg,image/png"></label><div class="form-section" style="margin-top:28px"><h2>Контакты</h2><p>Укажи хотя бы один контакт для отправки на проверку. Контакт будет виден авторизованным участникам в объявлении. Профиль заполнять необязательно; изменения здесь относятся только к этому объявлению.</p></div><div class="form-grid"><label class="field"><span>Telegram</span><input type="text" name="telegram" maxlength="300" value="${h(v.telegram)}" placeholder="@username или https://t.me/username"></label><label class="field"><span>VK</span><input type="text" name="vk" maxlength="300" value="${h(v.vk)}" placeholder="username или https://vk.com/username"></label></div><div class="form-actions"><button class="button" type="submit">${l?.status === "completed" ? "Сохранить изменения" : "Отправить на проверку"}</button><button class="button secondary" type="submit" name="save_mode" value="draft" formnovalidate>Сохранить в архив</button><a class="button plain" href="#/mine?status=archived">Закрыть</a><span class="small muted">Для черновика контакт не требуется.</span></div></form>`,
+    `<div class="page-head"><h1>${l ? "Редактировать объявление" : "Новое объявление"}</h1><p id="autosave-status" class="small muted" role="status">Черновик сохраняется автоматически в архив.</p></div>${l ? moderationNotice(l) : ""}<form id="listing-form" class="panel" style="max-width:950px"><div class="form-section"><h2>Основное</h2></div><div class="form-grid"><label class="field"><span>Тип</span><select name="kind">${option("offer", "Предложение", v.kind) + option("request", "Заявка", v.kind)}</select></label><label class="field"><span>Категория</span><select name="category" required>${options(state.catalog.categories, v.category)}</select></label><label class="field full"><span>Название</span><input name="title" minlength="3" maxlength="120" value="${h(v.title)}" required placeholder="Например, настольная лампа для комнаты"></label><label class="field full"><span>Описание</span><textarea name="description" minlength="10" maxlength="10000" required placeholder="Состояние, подробности, условия передачи или помощи…">${h(v.description)}</textarea></label><label class="field"><span>Местоположение</span><select name="location" required>${options(state.catalog.locations, v.location)}</select></label><label class="field" id="dorm-field" ${v.location === "EXTERNAL" ? "hidden" : ""}><span>Общежитие · необязательно</span><select name="dorm_id" ${!locationNames[v.location] || v.location === "UNSPECIFIED" || v.location === "EXTERNAL" ? "disabled" : ""}>${dormOptions(v.location, v.dorm_id)}</select></label><label class="field" id="address-field" ${v.location !== "EXTERNAL" ? "hidden" : ""}><span>Адрес · необязательно</span><input name="address" maxlength="300" value="${h(v.location === "EXTERNAL" ? v.address : "")}" ${v.location !== "EXTERNAL" ? "disabled" : ""} placeholder="Улица, дом или удобное место встречи"></label><label class="field"><span>Стоимость</span><select name="price_mode">${option("unset", "Не указано", v.price_mode) + option("price", "Цена", v.price_mode) + option("exchange", "Обмен", v.price_mode)}</select></label><label class="field" id="price-field" ${v.price_mode !== "price" ? "hidden" : ""}><span>Цена, ₽</span><input name="price" type="text" inputmode="decimal" value="${recover && recovery.raw_price !== undefined ? h(recovery.raw_price) : v.price_minor != null ? h(v.price_minor / 100) : ""}" placeholder="0,00"><span class="hint">0 — бесплатно.</span></label></div><div class="form-section" style="margin-top:28px"><h2>Фотографии</h2><p>До 10 фотографий JPEG или PNG. Большие фотографии сжимаются автоматически. Первая — обложка.</p></div><div id="photo-list" class="photo-list"></div><label class="upload"><strong>＋ Добавить фотографии</strong><span class="small muted">Обрезку можно настроить для каждой фотографии.</span><input id="photo-input" type="file" accept="image/jpeg,image/png" multiple></label><div class="form-section" style="margin-top:28px"><h2>Контакты</h2><p>Укажи хотя бы один контакт для отправки на проверку. Контакт будет виден авторизованным участникам в объявлении. Профиль заполнять необязательно; изменения здесь относятся только к этому объявлению.</p></div><div class="form-grid"><label class="field"><span>Telegram</span><input type="text" name="telegram" maxlength="300" value="${h(v.telegram)}" placeholder="@username или https://t.me/username"></label><label class="field"><span>VK</span><input type="text" name="vk" maxlength="300" value="${h(v.vk)}" placeholder="username или https://vk.com/username"></label></div><div class="form-actions"><button class="button" type="submit">${l?.status === "completed" ? "Сохранить изменения" : "Отправить на проверку"}</button><button class="button secondary" type="submit" name="save_mode" value="draft" formnovalidate>Сохранить в архив</button><a class="button plain" href="#/mine?status=archived">Закрыть</a><span class="small muted">Для черновика контакт не требуется.</span></div></form>`,
     seq,
   );
   state.editor = {
@@ -355,6 +361,7 @@ async function formView(id, seq) {
       file: item.file,
       url: URL.createObjectURL(item.file),
       uploadKey: item.uploadKey,
+      replaceID: item.replaceID,
     }));
     if (recovery.input) {
       captureEditor();
@@ -372,19 +379,15 @@ function renderPhotos() {
   const target = document.querySelector("#photo-list");
   if (!target) return;
   const existing = state.formListing?.photos || [];
-  target.innerHTML =
-    existing
-      .map(
-        (p, i) =>
-          `<div class="photo-item"><div class="photo-preview photo-frame">${photoMarkup(photoURL(p.id), "Фотография " + (i + 1))}</div>${i === 0 ? '<span class="pill">Обложка</span>' : ""}<div class="row">${i > 0 ? `<button type="button" data-action="cover" data-photo="${h(p.id)}">В обложку</button>` : ""}<button type="button" data-action="delete-photo" data-photo="${h(p.id)}">Удалить</button></div></div>`,
-      )
-      .join("") +
-    state.pending
-      .map(
-        (p, i) =>
-          `<div class="photo-item"><div class="photo-preview photo-frame">${photoMarkup(p.url, "Новая фотография " + (i + 1))}</div>${existing.length === 0 && i === 0 ? '<span class="pill">Обложка</span>' : ""}<div class="row"><button type="button" data-action="crop" data-index="${i}" ${p.uploadKey ? "disabled" : ""}>Обрезать</button><button type="button" data-action="remove-pending" data-index="${i}">Удалить</button></div></div>`,
-      )
-      .join("");
+  function thumbnail(src, alt, index, photo, pendingIndex) {
+    const local = pendingIndex >= 0 ? state.pending[pendingIndex] : null;
+    const cropTarget = local ? `data-index="${pendingIndex}"` : `data-photo="${h(photo.id)}"`;
+    return `<div class="photo-item"><div class="photo-preview photo-frame">${photoMarkup(src, alt)}${index === 0 ? '<span class="pill">Обложка</span>' : ""}<button type="button" class="photo-crop-button" data-action="crop" ${cropTarget} ${local?.uploadKey ? "disabled" : ""} aria-label="Обрезать: ${h(alt)}">Обрезать</button></div><div class="row">${photo && index > 0 ? `<button type="button" data-action="cover" data-photo="${h(photo.id)}" ${local ? "disabled" : ""}>В обложку</button>` : ""}${local ? `<button type="button" data-action="remove-pending" data-index="${pendingIndex}" ${local.uploadKey ? "disabled" : ""}>${local.replaceID ? "Отменить обрезку" : "Удалить"}</button>` : `<button type="button" data-action="delete-photo" data-photo="${h(photo.id)}">Удалить</button>`}</div></div>`;
+  }
+  target.innerHTML = existing.map((p, i) => {
+    const pendingIndex = state.pending.findIndex(item => item.replaceID === p.id);
+    return thumbnail(pendingIndex >= 0 ? state.pending[pendingIndex].url : photoURL(p.id), `Фотография ${i + 1}`, i, p, pendingIndex);
+  }).join("") + state.pending.map((p, i) => p.replaceID && existing.some(photo => photo.id === p.replaceID) ? "" : thumbnail(p.url, `Новая фотография ${i + 1}`, existing.length + state.pending.slice(0, i).filter(p => !p.replaceID).length, null, i)).join("");
   const form = target.closest("form");
   if (form?.dataset.busy) lockControls(form);
 }
@@ -395,18 +398,18 @@ const photoLimits = {
   sourceSide: 16000,
   longSide: 1920,
 };
-function queuePhotos(files, cropSelected = false) {
+function queuePhotos(files) {
   const selected = Array.from(files),
     seq = state.seq,
     pending = state.pending;
   state.photoWork = state.photoWork
-    .then(() => addPhotos(selected, seq, pending, cropSelected))
+    .then(() => addPhotos(selected, seq, pending))
     .catch((e) => toast(e.message, true));
 }
-async function addPhotos(files, seq, pending, cropSelected = false) {
+async function addPhotos(files, seq, pending) {
   for (const file of files) {
     if (seq !== state.seq || pending !== state.pending) return;
-    if ((state.formListing?.photos.length || 0) + pending.length >= 10) {
+    if ((state.formListing?.photos.length || 0) + pending.filter(p => !p.replaceID).length >= 10) {
       toast("Можно добавить не больше 10 фотографий", true);
       break;
     }
@@ -424,11 +427,6 @@ async function addPhotos(files, seq, pending, cropSelected = false) {
       const normalized = await normalizePhoto(image);
       if (seq !== state.seq || pending !== state.pending) return;
       pending.push({ file: normalized, url: URL.createObjectURL(normalized) });
-      if (cropSelected) {
-        renderPhotos();
-        const editing = await crop(pending.length - 1);
-        if (editing) await editing.closed;
-      }
     } catch (e) {
       if (seq === state.seq) toast(e.message, true);
     } finally {
@@ -501,164 +499,148 @@ function cropRect(width, height, ratio = 0) {
   return { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h };
 }
 function moveCrop(box, dx, dy, width, height) {
-  return {
-    ...box,
-    x: Math.max(0, Math.min(width - box.width, box.x + dx)),
-    y: Math.max(0, Math.min(height - box.height, box.y + dy)),
-  };
+  return { ...box, x: Math.max(0, Math.min(width - box.width, box.x + dx)), y: Math.max(0, Math.min(height - box.height, box.y + dy)) };
 }
 function resizeCrop(box, corner, dx, dy, width, height, ratio = 0) {
   const east = corner.includes("e"), south = corner.includes("s");
-  const ax = box.x + (east ? 0 : box.width),
-    ay = box.y + (south ? 0 : box.height);
-  const px = Math.max(0, Math.min(width, box.x + (east ? box.width : 0) + dx)),
-    py = Math.max(0, Math.min(height, box.y + (south ? box.height : 0) + dy));
-  const sx = px === ax ? (east ? 1 : -1) : Math.sign(px - ax),
-    sy = py === ay ? (south ? 1 : -1) : Math.sign(py - ay);
+  const ax = east ? box.x : box.x + box.width, ay = south ? box.y : box.y + box.height;
+  const px = Math.max(0, Math.min(width, (east ? box.x + box.width : box.x) + dx));
+  const py = Math.max(0, Math.min(height, (south ? box.y + box.height : box.y) + dy));
+  const sx = Math.sign(px - ax) || (east ? 1 : -1), sy = Math.sign(py - ay) || (south ? 1 : -1);
   let w = Math.max(1, Math.abs(px - ax)), h = Math.max(1, Math.abs(py - ay));
-  if (ratio > 0) {
-    if (w / h > ratio) h = w / ratio;
-    else w = h * ratio;
-  }
-  const maxWidth = sx > 0 ? width - ax : ax,
-    maxHeight = sy > 0 ? height - ay : ay;
-  const scale = Math.min(1, maxWidth / w, maxHeight / h);
-  if (scale <= 0) return { ...box };
-  w *= scale; h *= scale;
+  if (ratio > 0) { w = Math.max(w, h * ratio); h = w / ratio; }
+  const fit = Math.min(1, (sx > 0 ? width - ax : ax) / w, (sy > 0 ? height - ay : ay) / h);
+  if (fit <= 0) return { ...box };
+  w *= fit; h *= fit;
   return { x: sx > 0 ? ax : ax - w, y: sy > 0 ? ay : ay - h, width: w, height: h };
 }
-async function crop(index) {
-  const seq = state.seq, pending = state.pending, item = pending[index];
-  if (!item) return;
-  if (item.uploadKey) {
-    toast("Сначала повтори сохранение, чтобы подтвердить загрузку фотографии", true);
-    return;
-  }
+async function crop(index, photoID) {
+  if (state.cropSession) return;
+  const seq = state.seq, pending = state.pending, editor = state.editor;
+  let item = index == null ? null : pending[index];
+  if (index != null && !item) return;
   clearTimeout(autosaveTimer);
-  const image = await imageFrom(item.url);
-  if (seq !== state.seq || pending !== state.pending || !pending.includes(item)) return;
-  if (item.uploadKey) {
-    toast("Фотография уже сохраняется. Дождись окончания загрузки", true);
-    return;
-  }
-  const width = image.naturalWidth || image.width,
-    height = image.naturalHeight || image.height;
-  modal("Обрезать фотографию",
-    `<p class="small muted">Тяни за углы рамки или перемещай её. Размер можно задать в пикселях.</p><canvas id="crop-canvas" class="crop-canvas" width="1200" height="900" aria-label="Выбор области фотографии. Для точного размера используй поля ширины и высоты."></canvas><div class="crop-tools"><label class="field crop-proportions"><span>Пропорции</span><select id="crop-ratio"><option value="free">Свободно</option><option value="original">Исходные</option><option value="1.3333333333333333">4:3</option><option value="1">1:1</option><option value="1.7777777777777777">16:9</option><option value="0.75">3:4</option></select></label><label class="field"><span>Ширина, px</span><input id="crop-width" type="number" inputmode="numeric" min="1" max="${width}" step="1"></label><label class="field"><span>Высота, px</span><input id="crop-height" type="number" inputmode="numeric" min="1" max="${height}" step="1"></label></div><div class="form-actions"><button type="button" class="button" id="crop-save">Применить</button><button type="button" class="button secondary" id="crop-reset">Сбросить</button><button type="button" class="button plain" data-action="close-dialog">Отмена</button></div>`);
-  const canvas = document.querySelector("#crop-canvas"), context = canvas.getContext("2d"),
-    proportions = document.querySelector("#crop-ratio"),
-    widthInput = document.querySelector("#crop-width"), heightInput = document.querySelector("#crop-height"),
-    save = document.querySelector("#crop-save");
-  if (!context) { closeDialog(); throw new Error("Не удалось открыть обрезку фотографии"); }
-  const scale = Math.min(canvas.width / width, canvas.height / height),
-    ox = (canvas.width - width * scale) / 2, oy = (canvas.height - height * scale) / 2;
-  let box = cropRect(width, height), ratio = 0, drag = null;
-  let release;
-  const finished = new Promise(resolve => { release = resolve; });
-  // Autosave must not upload the old file while the crop is being edited.
-  state.photoWork = state.photoWork.then(() => finished);
-  dialog.addEventListener("close", () => {
-    release();
-    if (seq === state.seq && state.editor) scheduleAutosave();
-  }, { once: true });
-  function draw() {
-    context.fillStyle = "#16181c";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, ox, oy, width * scale, height * scale);
-    context.fillStyle = "#0009";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    const x = ox + box.x * scale, y = oy + box.y * scale,
-      w = box.width * scale, h = box.height * scale;
-    context.save();
-    context.beginPath(); context.rect(x, y, w, h); context.clip();
-    context.drawImage(image, ox, oy, width * scale, height * scale);
-    context.restore();
-    const pixel = canvas.width / Math.max(1, canvas.getBoundingClientRect().width);
-    context.strokeStyle = "#fff"; context.lineWidth = 2 * pixel;
-    context.strokeRect(x, y, w, h);
-    context.fillStyle = "#fff";
-    for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]])
-      context.fillRect(cx - 5 * pixel, cy - 5 * pixel, 10 * pixel, 10 * pixel);
-    widthInput.value = Math.max(1, Math.round(box.width));
-    heightInput.value = Math.max(1, Math.round(box.height));
-  }
-  function point(event) {
-    const r = canvas.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(width, ((event.clientX - r.left) * canvas.width / r.width - ox) / scale)),
-      y: Math.max(0, Math.min(height, ((event.clientY - r.top) * canvas.height / r.height - oy) / scale)),
-    };
-  }
-  canvas.addEventListener("pointerdown", event => {
-    if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
-    const p = point(event), hit = 20 * canvas.width / canvas.getBoundingClientRect().width / scale;
-    const corners = [["nw", box.x, box.y], ["ne", box.x + box.width, box.y],
-      ["sw", box.x, box.y + box.height], ["se", box.x + box.width, box.y + box.height]];
-    let corner = corners.find(([, x, y]) => Math.abs(p.x - x) <= hit && Math.abs(p.y - y) <= hit)?.[0];
-    if (!corner && !(p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height)) {
-      box = { x: Math.min(width - 1, p.x), y: Math.min(height - 1, p.y), width: 1, height: 1 };
-      corner = "se";
+  let resolveClosed;
+  const closed = new Promise(resolve => { resolveClosed = resolve; });
+  const session = {
+    cancelled: false,
+    finish() {
+      if (session.cancelled) return;
+      session.cancelled = true;
+      dialog.removeEventListener("close", session.finish);
+      if (state.cropSession === session) state.cropSession = null;
+      resolveClosed();
+      if (seq === state.seq) scheduleAutosave();
+    },
+  };
+  state.cropSession = session;
+  try {
+    // Drain the save already in flight before installing the crop gate.
+    await state.photoWork;
+    await editor?.work.catch(() => {});
+    if (session.cancelled || seq !== state.seq || pending !== state.pending) { session.finish(); return; }
+    if (item && !pending.includes(item)) {
+      photoID = item.savedID;
+      item = null;
     }
-    drag = { point: p, box: { ...box }, corner, pointer: event.pointerId };
-    canvas.setPointerCapture(event.pointerId);
+    if (!item && photoID) item = pending.find(p => p.replaceID === photoID) || null;
+    const saved = state.formListing?.photos.find(p => p.id === photoID);
+    if ((!item && !saved) || item?.uploadKey) {
+      if (item?.uploadKey) toast("Повтори сохранение, чтобы подтвердить загрузку фотографии", true);
+      session.finish(); return;
+    }
+    state.photoWork = closed;
+    const image = await imageFrom(item ? item.url : photoURL(saved.id));
+    if (session.cancelled || seq !== state.seq || pending !== state.pending) { session.finish(); return; }
+    modal("Обрезать фотографию", `<p class="small muted">Перетаскивай углы рамки или саму рамку.</p><canvas id="crop-canvas" class="crop-canvas" width="1200" height="900" aria-label="Область обрезки фотографии"></canvas><div class="crop-tools"><label class="field"><span>Пропорции</span><select id="crop-ratio"><option value="0">Свободно</option><option value="original">Исходные</option><option value="${4/3}">4:3</option><option value="1">1:1</option><option value="${16/9}">16:9</option><option value="${3/4}">3:4</option></select></label><label class="field"><span>Ширина, px</span><input type="number" id="crop-width" min="1" step="1" inputmode="numeric"></label><label class="field"><span>Высота, px</span><input type="number" id="crop-height" min="1" step="1" inputmode="numeric"></label></div><div class="form-actions"><button type="button" class="button" id="crop-save">Применить</button><button type="button" class="button secondary" id="crop-reset">Сбросить</button><button type="button" class="button plain" data-action="close-dialog">Отмена</button></div>`);
+    dialog.addEventListener("close", session.finish, { once: true });
+    const canvas = document.querySelector("#crop-canvas"), context = canvas.getContext("2d");
+    if (!context) throw new Error("Не удалось открыть редактор фотографии");
+    const widthInput = document.querySelector("#crop-width"), heightInput = document.querySelector("#crop-height");
+    const ratioInput = document.querySelector("#crop-ratio"), save = document.querySelector("#crop-save");
+    const width = image.naturalWidth || image.width, height = image.naturalHeight || image.height;
+    widthInput.max = width; heightInput.max = height;
+    const scale = Math.min(canvas.width / width, canvas.height / height);
+    const ox = (canvas.width - width * scale) / 2, oy = (canvas.height - height * scale) / 2;
+    let ratio = 0, box = cropRect(width, height), drag = null;
+    function draw() {
+      context.fillStyle = "#181818"; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, ox, oy, width * scale, height * scale);
+      const x = ox + box.x * scale, y = oy + box.y * scale, w = box.width * scale, h = box.height * scale;
+      context.fillStyle = "rgba(0,0,0,.55)";
+      context.fillRect(ox, oy, width * scale, y - oy);
+      context.fillRect(ox, y + h, width * scale, oy + height * scale - y - h);
+      context.fillRect(ox, y, x - ox, h);
+      context.fillRect(x + w, y, ox + width * scale - x - w, h);
+      const handle = 12 * canvas.width / canvas.getBoundingClientRect().width;
+      context.strokeStyle = "#fff"; context.lineWidth = 2 * canvas.width / canvas.getBoundingClientRect().width;
+      context.strokeRect(x, y, w, h); context.fillStyle = "#fff";
+      for (const [px, py] of [[x,y], [x+w,y], [x,y+h], [x+w,y+h]]) context.fillRect(px-handle/2, py-handle/2, handle, handle);
+      widthInput.value = Math.max(1, Math.round(box.width)); heightInput.value = Math.max(1, Math.round(box.height));
+    }
+    function point(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: Math.max(0, Math.min(width, ((e.clientX - rect.left) * canvas.width / rect.width - ox) / scale)), y: Math.max(0, Math.min(height, ((e.clientY - rect.top) * canvas.height / rect.height - oy) / scale)) };
+    }
+    canvas.addEventListener("pointerdown", e => {
+      e.preventDefault(); canvas.setPointerCapture(e.pointerId);
+      const p = point(e), radius = 22 * canvas.width / canvas.getBoundingClientRect().width / scale;
+      const corners = [["nw", box.x, box.y], ["ne", box.x+box.width, box.y], ["sw", box.x, box.y+box.height], ["se", box.x+box.width, box.y+box.height]];
+      const corner = corners.find(([,x,y]) => Math.hypot(p.x-x,p.y-y) <= radius)?.[0];
+      if (corner) drag = { ...p, box: { ...box }, corner };
+      else if (p.x >= box.x && p.x <= box.x+box.width && p.y >= box.y && p.y <= box.y+box.height) drag = { ...p, box: { ...box }, move: true };
+      else { box = { x:p.x, y:p.y, width:0, height:0 }; drag = { ...p, box: { ...box }, corner:"se" }; }
+      draw();
+    });
+    canvas.addEventListener("pointermove", e => {
+      if (!drag) return;
+      const p = point(e);
+      box = drag.move ? moveCrop(drag.box,p.x-drag.x,p.y-drag.y,width,height) : resizeCrop(drag.box,drag.corner,p.x-drag.x,p.y-drag.y,width,height,ratio);
+      draw();
+    });
+    for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) canvas.addEventListener(event, () => { drag = null; });
+    ratioInput.addEventListener("change", () => { ratio = ratioInput.value === "original" ? width/height : Number(ratioInput.value); box = cropRect(width,height,ratio); draw(); });
+    function dimension(which) {
+      let w = which === "width" ? Number(widthInput.value) : box.width;
+      let h = which === "height" ? Number(heightInput.value) : box.height;
+      if (!Number.isFinite(w) || w < 1 || !Number.isFinite(h) || h < 1) { draw(); return; }
+      w = Math.min(width,w); h = Math.min(height,h);
+      if (ratio > 0) { if (which === "width") h = w/ratio; else w = h*ratio; }
+      const fit = Math.min(1,width/w,height/h); w *= fit; h *= fit;
+      box = moveCrop({ x:box.x+(box.width-w)/2, y:box.y+(box.height-h)/2, width:w, height:h },0,0,width,height);
+      draw();
+    }
+    widthInput.addEventListener("change", () => dimension("width"));
+    heightInput.addEventListener("change", () => dimension("height"));
+    document.querySelector("#crop-reset").addEventListener("click", () => { box = cropRect(width,height,ratio); draw(); });
+    save.addEventListener("click", async () => {
+      if (save.disabled) return;
+      save.disabled = true;
+      const output = document.createElement("canvas");
+      output.width = Math.max(1,Math.round(box.width)); output.height = Math.max(1,Math.round(box.height));
+      try {
+        output.getContext("2d").drawImage(image,box.x,box.y,box.width,box.height,0,0,output.width,output.height);
+        const blob = await normalizePhoto(output);
+        if (session.cancelled || seq !== state.seq || pending !== state.pending || !canvas.isConnected) return;
+        if (item) {
+          if (!pending.includes(item) || item.uploadKey) return;
+          URL.revokeObjectURL(item.url); item.file = blob; item.url = URL.createObjectURL(blob);
+        } else {
+          if (!state.formListing?.photos.some(p => p.id === saved.id)) return;
+          pending.push({ file:blob, url:URL.createObjectURL(blob), replaceID:saved.id });
+        }
+        captureEditor(); renderPhotos(); closeDialog();
+      } catch (e) { if (!session.cancelled) toast(e.message,true); }
+      finally { output.width = output.height = 1; if (save.isConnected) save.disabled = false; }
+    });
     draw();
-  });
-  canvas.addEventListener("pointermove", event => {
-    if (!drag || event.pointerId !== drag.pointer) return;
-    const p = point(event), dx = p.x - drag.point.x, dy = p.y - drag.point.y;
-    box = drag.corner ? resizeCrop(drag.box, drag.corner, dx, dy, width, height, ratio)
-      : moveCrop(drag.box, dx, dy, width, height);
-    draw();
-  });
-  function endDrag(event) { if (drag?.pointer === event.pointerId) drag = null; }
-  canvas.addEventListener("pointerup", endDrag);
-  canvas.addEventListener("pointercancel", endDrag);
-  proportions.addEventListener("change", () => {
-    ratio = proportions.value === "original" ? width / height : Number(proportions.value) || 0;
-    box = cropRect(width, height, ratio); draw();
-  });
-  function setSize(axis, input) {
-    const value = Number(input.value);
-    if (!Number.isFinite(value) || value < 1) { draw(); return; }
-    let w = axis === "width" ? Math.min(width, value) : box.width,
-      h = axis === "height" ? Math.min(height, value) : box.height;
-    if (ratio > 0) { if (axis === "width") h = w / ratio; else w = h * ratio; }
-    const fit = Math.min(1, width / w, height / h); w *= fit; h *= fit;
-    box = { x: Math.max(0, Math.min(width - w, box.x + (box.width - w) / 2)),
-      y: Math.max(0, Math.min(height - h, box.y + (box.height - h) / 2)), width: w, height: h };
-    draw();
+    return { closed };
+  } catch (e) {
+    session.finish();
+    if (dialog.open) closeDialog();
+    throw e;
   }
-  widthInput.addEventListener("change", () => setSize("width", widthInput));
-  heightInput.addEventListener("change", () => setSize("height", heightInput));
-  document.querySelector("#crop-reset").addEventListener("click", () => {
-    ratio = 0; proportions.value = "free"; box = cropRect(width, height); draw();
-  });
-  save.addEventListener("click", async () => {
-    if (save.disabled) return;
-    save.disabled = true;
-    const output = document.createElement("canvas");
-    try {
-      const x = Math.floor(box.x), y = Math.floor(box.y),
-        w = Math.min(width - x, Math.max(1, Math.round(box.width))),
-        h = Math.min(height - y, Math.max(1, Math.round(box.height)));
-      output.width = w; output.height = h;
-      const target = output.getContext("2d");
-      if (!target) throw new Error("Не удалось обработать фотографию");
-      target.drawImage(image, x, y, w, h, 0, 0, w, h);
-      const blob = await normalizePhoto(output);
-      if (seq !== state.seq || pending !== state.pending || !pending.includes(item) ||
-        item.uploadKey || !canvas.isConnected || !dialog.open) return;
-      URL.revokeObjectURL(item.url);
-      item.file = blob; item.url = URL.createObjectURL(blob);
-      captureEditor();
-      closeDialog(); renderPhotos(); scheduleAutosave();
-    } catch (error) { toast(error.message, true); }
-    finally { output.width = output.height = 1; save.disabled = false; }
-  });
-  draw();
-  return { closed: finished };
 }
-
 let logViewer = null;
 function stopLogViewer() {
   logViewer?.stop();
@@ -700,7 +682,7 @@ async function adminView(params, seq) {
     const items = await api("/admin/users?offset=" + offset);
     content = `<div class="panel table-wrap"><table><thead><tr><th>Пользователь</th><th>Состояние</th><th>Регистрация</th><th>Действия</th></tr></thead><tbody>${items.map((u) => `<tr><td><strong>${h(u.nickname)}</strong><div class="small muted" style="white-space:normal;overflow-wrap:anywhere">${h(u.email)}</div><div class="small muted">№${u.id}${u.is_admin ? " · администратор" : ""}</div></td><td><span class="pill ${u.blocked ? "red" : u.active ? "" : "gray"}">${u.blocked ? "Заблокирован" : u.active ? "Активен" : "Деактивирован"}</span></td><td>${h(date(u.created_at))}</td><td><div class="account-actions">${!u.is_admin && u.id !== state.me.id ? `<button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="${u.blocked ? "unblock" : "block"}">${u.blocked ? "Разблокировать" : "Заблокировать"}</button><button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="delete">Удалить</button>` : "—"}</div></td></tr>`).join("")}</tbody></table></div>${adminPager(items.length, offset, params)}`;
   } else if (tab === "dorms") {
-    content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations, "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(d.name)}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
+    content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations.filter(l => l.code !== "EXTERNAL"), "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(d.name)}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
   } else if (tab === "logs") {
     content = logPanel();
   } else if (tab === "site") {
@@ -931,7 +913,8 @@ async function saveListing(form, data, mode = "submit") {
     title: data.get("title"),
     description: data.get("description"),
     location: data.get("location"),
-    dorm_id: data.get("dorm_id") ? Number(data.get("dorm_id")) : null,
+    address: data.get("location") === "EXTERNAL" ? data.get("address") || "" : "",
+    dorm_id: data.get("location") !== "EXTERNAL" && data.get("dorm_id") ? Number(data.get("dorm_id")) : null,
     price_mode: data.get("price_mode"),
     price_minor: amount,
     telegram: data.get("telegram"),
@@ -1015,23 +998,29 @@ async function saveListing(form, data, mode = "submit") {
     const item = pending[0],
       body = new FormData();
     item.uploadKey ||= requestKey();
+    if (seq === state.seq) renderPhotos();
     if (seq === state.seq && state.editor) await storeEditor(state.editor);
     body.append("file", item.file, "photo.jpg");
     try {
-      const photo = await api("/listings/" + saved.id + "/photos", {
-        method: "POST",
+      const photo = await api("/listings/" + saved.id + "/photos" + (item.replaceID ? "/" + encodeURIComponent(item.replaceID) : ""), {
+        method: item.replaceID ? "PUT" : "POST",
         body,
         idempotencyKey: item.uploadKey,
       });
-      if (!saved.photos.some((existing) => existing.id === photo.id))
-        saved.photos.push(photo);
+      if (item.replaceID) {
+        const position = saved.photos.findIndex(p => p.id === item.replaceID);
+        if (position >= 0) saved.photos.splice(position, 1);
+      }
+      if (!saved.photos.some((existing) => existing.id === photo.id)) saved.photos.push(photo);
+      saved.photos.sort((a, b) => a.position - b.position);
+      item.savedID = photo.id;
       pending.shift();
       URL.revokeObjectURL(item.url);
       if (saved.revision) saved.revision++;
       if (seq === state.seq && state.editor) await storeEditor(state.editor);
     } catch (e) {
       // These explicit errors occur before creation; the user can edit the file.
-      if ([400, 403, 409, 429].includes(e.status)) delete item.uploadKey;
+      if ([400, 403, 404, 409, 429].includes(e.status)) delete item.uploadKey;
       if (seq === state.seq) {
         try {
           const latest = await api("/listings/" + saved.id);
@@ -1041,6 +1030,7 @@ async function saveListing(form, data, mode = "submit") {
             "title",
             "description",
             "location",
+            "address",
             "dorm_id",
             "price_mode",
             "price_minor",
@@ -1080,7 +1070,7 @@ async function saveListing(form, data, mode = "submit") {
   } else if (saved.revision) {
     saved = await api("/listings/" + saved.id);
   }
-  if (seq === state.seq) state.formListing = saved;
+  if (seq === state.seq) { state.formListing = saved; renderPhotos(); }
   if (mode !== "autosave" && seq === state.seq) {
     if (state.editor) {
       state.editor.saved = state.editor.dirty;
@@ -1280,8 +1270,8 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("change", (event) => {
   const el = event.target;
   if (el.closest("form")?.dataset.busy) return;
-  if (el.id === "photo-input" || el.id === "photo-crop-input") {
-    queuePhotos(el.files, el.id === "photo-crop-input");
+  if (el.id === "photo-input") {
+    queuePhotos(el.files);
     el.value = "";
   } else if (el.name === "location") {
     const form = el.closest("form"),
@@ -1292,7 +1282,14 @@ document.addEventListener("change", (event) => {
         "",
         form.id === "filter-form" ? "Все общежития" : "Без общежития",
       );
-      dorm.disabled = !el.value;
+      dorm.disabled = !el.value || el.value === "EXTERNAL";
+      if (form.id === "listing-form") {
+        const external = el.value === "EXTERNAL", address = form.querySelector('[name="address"]');
+        form.querySelector("#dorm-field").hidden = external;
+        form.querySelector("#address-field").hidden = !external;
+        address.disabled = !external;
+        if (!external) address.value = "";
+      }
     }
   } else if (el.name === "price_mode") {
     const field = document.querySelector("#price-field");
@@ -1363,8 +1360,8 @@ document.addEventListener("click", async (event) => {
     else if (action === "gallery") {
       const image = document.querySelector("#gallery img");
       if (image) image.src = photoURL(photo);
-      const backdrop = document.querySelector("#gallery .photo-backdrop");
-      if (backdrop) backdrop.src = photoURL(photo);
+      const background = document.querySelector("#gallery .photo-backdrop");
+      if (background) background.src = photoURL(photo);
     } else if (action === "report")
       modal(
         "Пожаловаться",
@@ -1422,12 +1419,16 @@ document.addEventListener("click", async (event) => {
         `<p class="muted">В объявлениях сохранится местоположение, а поле общежития очистится.</p><form id="delete-dorm-form" data-id="${h(id)}"><button class="button danger" type="submit">Удалить из справочника</button></form>`,
       );
     else if (action === "remove-pending") {
+      if (state.pending[Number(index)]?.uploadKey) {
+        toast("Дождись загрузки или повтори сохранение, чтобы подтвердить её результат", true);
+        return;
+      }
       const [p] = state.pending.splice(Number(index), 1);
       if (p) URL.revokeObjectURL(p.url);
       renderPhotos();
       captureEditor();
       scheduleAutosave();
-    } else if (action === "crop") await crop(Number(index));
+    } else if (action === "crop") await crop(index === undefined ? null : Number(index), photo);
     else if (action === "delete-photo" || action === "cover") {
       const seq = state.seq, form = button.closest("form");
       clearTimeout(autosaveTimer);
@@ -1557,7 +1558,8 @@ function captureEditor(form = state.editor?.form, baseline = false) {
     title: raw.title || "",
     description: raw.description || "",
     location: raw.location || "",
-    dorm_id: raw.dorm_id ? Number(raw.dorm_id) : null,
+    address: raw.location === "EXTERNAL" ? raw.address || "" : "",
+    dorm_id: raw.location !== "EXTERNAL" && raw.dorm_id ? Number(raw.dorm_id) : null,
     price_mode:
       raw.price_mode === "price" && value === null
         ? "unset"
@@ -1597,6 +1599,7 @@ function storeEditor(editor) {
     pending: state.pending.map((p) => ({
       file: p.file,
       uploadKey: p.uploadKey,
+      replaceID: p.replaceID,
     })),
   };
   editor.storeWork = editor.storeWork
@@ -1616,7 +1619,7 @@ function storeEditor(editor) {
 }
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
-  if (state.maintenance || !state.editor || state.editor.closing) return;
+  if (state.maintenance || state.cropSession || !state.editor || state.editor.closing) return;
   autosaveTimer = setTimeout(
     () =>
       autosave().catch((e) =>
@@ -1704,6 +1707,7 @@ async function autosave() {
   return editor.work;
 }
 async function leaveEditor() {
+  if (state.cropSession) closeDialog();
   clearTimeout(autosaveTimer);
   const editor = state.editor;
   if (!editor) return;
