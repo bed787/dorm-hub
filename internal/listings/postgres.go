@@ -110,17 +110,38 @@ func (s *Service) ListForViewer(ctx context.Context, viewer int64, f Filter, adm
 		add(`l.author_id=$%d`, f.AuthorID)
 	}
 	order := `l.created_at DESC,l.id DESC`
+	querySource := source
 	if strings.TrimSpace(f.Query) != "" {
-		add(`l.search_vector @@ websearch_to_tsquery('russian',$%d)`, f.Query)
-		order = fmt.Sprintf(`ts_rank_cd(l.search_vector,websearch_to_tsquery('russian',$%d)) DESC,l.created_at DESC,l.id DESC`, len(args))
+		usedMeili := false
+		if s.search != nil && (f.Scope == "" || f.Scope == "feed" || f.Scope == "favorites") {
+			hits, searchErr := s.search.Search(ctx, f.Query)
+			if searchErr == nil {
+				if len(hits) == 0 {
+					return page, nil
+				}
+				ids, revisions := []int64{}, []int64{}
+				for _, hit := range hits {
+					ids = append(ids, hit.ID)
+					revisions = append(revisions, hit.Revision)
+				}
+				args = append(args, ids, revisions)
+				querySource += fmt.Sprintf(` JOIN unnest($%d::bigint[],$%d::bigint[]) WITH ORDINALITY sh(id,revision,rank) ON sh.id=l.id AND sh.revision=l.revision `, len(args)-1, len(args))
+				order = "sh.rank"
+				usedMeili = true
+			}
+		}
+		if !usedMeili {
+			add(`l.search_vector @@ websearch_to_tsquery('russian',$%d)`, f.Query)
+			order = fmt.Sprintf(`ts_rank_cd(l.search_vector,websearch_to_tsquery('russian',$%d)) DESC,l.created_at DESC,l.id DESC`, len(args))
+		}
 	}
 	where := ` WHERE ` + strings.Join(conditions, ` AND `)
 	// The viewer parameter is retained even when the count query only uses other filters.
-	if err := s.db.QueryRow(ctx, `SELECT count(*)`+source+where+` AND $1::bigint>0`, args...).Scan(&page.Total); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT count(*)`+querySource+where+` AND $1::bigint>0`, args...).Scan(&page.Total); err != nil {
 		return page, err
 	}
 	args = append(args, f.Limit, f.Offset)
-	query := `SELECT ` + selection + source + where + ` ORDER BY ` + order + fmt.Sprintf(` LIMIT $%d OFFSET $%d`, len(args)-1, len(args))
+	query := `SELECT ` + selection + querySource + where + ` ORDER BY ` + order + fmt.Sprintf(` LIMIT $%d OFFSET $%d`, len(args)-1, len(args))
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return page, err

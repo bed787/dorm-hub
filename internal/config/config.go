@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	MeiliURL, MeiliMasterKey                                                   string
 	Env, HTTPAddr, BaseURL, DatabaseURL, UploadDir, AuthSecret                 string
 	AllowedDomains, AllowedEmails, AdminEmails                                 []string
 	TrustedProxies                                                             []*net.IPNet
@@ -43,6 +44,17 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		return c, fmt.Errorf("BASE_URL: expected an HTTP(S) origin without a path")
 	}
 	c.SecureCookies = u.Scheme == "https"
+	c.MeiliURL = strings.TrimRight(strings.TrimSpace(get("MEILI_URL", "")), "/")
+	c.MeiliMasterKey = get("MEILI_MASTER_KEY", "")
+	if c.MeiliURL != "" {
+		endpoint, e := url.Parse(c.MeiliURL)
+		if e != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.User != nil {
+			return c, fmt.Errorf("MEILI_URL: expected an HTTP(S) origin without credentials or a path")
+		}
+		if len(c.MeiliMasterKey) < 32 {
+			return c, fmt.Errorf("MEILI_MASTER_KEY: expected at least 32 bytes when MEILI_URL is set")
+		}
+	}
 	_, port, err := net.SplitHostPort(c.HTTPAddr)
 	if err != nil {
 		return c, fmt.Errorf("HTTP_ADDR: %w", err)

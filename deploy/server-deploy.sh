@@ -60,8 +60,7 @@ if [[ "$operation" == rollback ]]; then
   exit 0
 fi
 
-# GitHub sends its short-lived GITHUB_TOKEN over encrypted SSH stdin.
-# Its Docker login lives in a temporary directory removed on every exit.
+
 IFS= read -r -t 30 registry_token
 [[ -n "$registry_token" ]] || { echo 'Missing registry token.' >&2; exit 1; }
 auth_dir=$(mktemp -d /run/dorm-hub-registry.XXXXXX)

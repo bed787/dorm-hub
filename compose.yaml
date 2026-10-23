@@ -1,0 +1,92 @@
+name: dorm-hub
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      HTTP_ADDR: 0.0.0.0:8080
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      DATABASE_URL: ${DATABASE_URL:-postgres://dormhub:dormhub_dev@db:5432/dormhub?sslmode=disable}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-students.example}
+      ALLOWED_EMAIL_ADDRESSES: ${ALLOWED_EMAIL_ADDRESSES:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@students.example}
+      AUTH_SECRET: ${AUTH_SECRET:-dorm-hub-local-development-secret-change-before-production}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      MEILI_URL: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-dormhub-development-search-key-32bytes}
+      UPLOAD_DIR: /app/data/uploads
+      UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-200}
+      UPLOAD_PHOTO_LIMIT: ${UPLOAD_PHOTO_LIMIT:-200}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-Dorm Hub <noreply@students.example>}
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: dormhub
+      POSTGRES_PASSWORD: dormhub_dev
+      POSTGRES_DB: dormhub
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dormhub -d dormhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+  meilisearch:
+    image: getmeili/meilisearch:v1.55.0
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_${MEILI_MASTER_KEY:-dormhub-development-search-key-32bytes}: ${MEILI_MASTER_KEY:-dormhub-development-search-key-32bytes}
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: 128MiB
+      MEILI_MAX_INDEXING_THREADS: "1"
+    volumes:
+      - meilisearch:/meili_data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7700/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  postgres:
+  uploads:
+  meilisearch:

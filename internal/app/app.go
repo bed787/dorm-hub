@@ -14,6 +14,7 @@ import (
 	"dorm-hub/internal/platform/logview"
 	"dorm-hub/internal/platform/mail"
 	"dorm-hub/internal/platform/postgres"
+	"dorm-hub/internal/platform/search"
 	"dorm-hub/internal/stars"
 	"dorm-hub/internal/users"
 	"dorm-hub/migrations"
@@ -27,6 +28,7 @@ import (
 )
 
 type App struct {
+	searchSync      *listings.SearchSync
 	server          *http.Server
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
@@ -65,13 +67,29 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		return nil, fmt.Errorf("clean deleted files: %w", err)
 	}
 	login := auth.New(db, cfg, mail.New(cfg))
-	handler := httpapi.New(cfg, logger, db, login, users.New(db), listings.New(db), locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, logs)
+	ads := listings.New(db)
+	var searchSync *listings.SearchSync
+	if cfg.MeiliURL != "" {
+		engine, e := search.New(cfg.MeiliURL, cfg.MeiliMasterKey)
+		if e != nil {
+			return nil, e
+		}
+		ads = listings.NewWithSearch(db, engine)
+		searchSync = listings.NewSearchSync(db, engine, logger)
+	}
+	handler := httpapi.New(cfg, logger, db, login, users.New(db), ads, locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, logs)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler, ReadHeaderTimeout: cfg.ReadHeaderTimeout, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 * 1024, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	ok = true
-	return &App{server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos, login: login}, nil
+	return &App{searchSync: searchSync, server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos, login: login}, nil
 }
 func (a *App) Run(ctx context.Context) error {
 	defer a.db.Close()
+	if a.searchSync != nil {
+		syncCtx, stopSync := context.WithCancel(ctx)
+		syncDone := make(chan struct{})
+		go func() { defer close(syncDone); a.searchSync.Run(syncCtx) }()
+		defer func() { stopSync(); <-syncDone }()
+	}
 	cleanupCtx, stopCleanup := context.WithCancel(ctx)
 	cleanupDone := make(chan struct{})
 	go func() {

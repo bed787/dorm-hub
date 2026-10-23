@@ -14,6 +14,8 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:?Set the initial administrator email}
       AUTH_SECRET: ${AUTH_SECRET:?Generate a new AUTH_SECRET}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      MEILI_URL: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Generate a Meilisearch master key}
       UPLOAD_DIR: /app/data/uploads
       UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-200}
       UPLOAD_PHOTO_LIMIT: ${UPLOAD_PHOTO_LIMIT:-200}
@@ -28,6 +30,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      meilisearch:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
       interval: 15s
@@ -62,6 +66,32 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+  meilisearch:
+    image: getmeili/meilisearch:v1.55.0
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_${MEILI_MASTER_KEY:?Generate a Meilisearch master key}: ${MEILI_MASTER_KEY:?Generate a Meilisearch master key}
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: 128MiB
+      MEILI_MAX_INDEXING_THREADS: "1"
+    volumes:
+      - meilisearch:/meili_data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7700/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 volumes:
   postgres:
   uploads:
+  meilisearch:

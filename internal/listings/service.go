@@ -8,7 +8,10 @@ import (
 	"unicode/utf8"
 )
 
-type Service struct{ db *pgxpool.Pool }
+type Service struct {
+	db     *pgxpool.Pool
+	search Searcher
+}
 
 func New(db *pgxpool.Pool) *Service { return &Service{db: db} }
 func Validate(in Input) error {
