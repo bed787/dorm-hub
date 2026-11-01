@@ -226,7 +226,7 @@ func TestDistrictMigrationPreservesListingsAndSeedsDorms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Locations) != 4 {
+	if len(catalog.Locations) != 6 {
 		t.Fatalf("districts: %+v", catalog.Locations)
 	}
 	counts := map[string]int{}
@@ -238,7 +238,7 @@ func TestDistrictMigrationPreservesListingsAndSeedsDorms(t *testing.T) {
 	if counts["VASILEOSTROVSKY"] != 8 || counts["PETRODVORTSOVY"] != 13 || counts["NEVSKY"] != 1 {
 		t.Fatalf("dorm counts: %+v", counts)
 	}
-	// A dorm from a different district must not be accepted in a listing.
+	// The dorm determines the group even if an old client sends another district.
 	var foreign int64
 	if err = db.QueryRow(ctx, `SELECT id FROM dorms WHERE location='NEVSKY' LIMIT 1`).Scan(&foreign); err != nil {
 		t.Fatal(err)
@@ -246,8 +246,8 @@ func TestDistrictMigrationPreservesListingsAndSeedsDorms(t *testing.T) {
 	in := input()
 	in.Location = "VASILEOSTROVSKY"
 	in.DormID = &foreign
-	if _, err = ads.Create(ctx, owner, in); !errors.Is(err, domain.ErrInvalid) {
-		t.Fatalf("foreign district dorm accepted: %v", err)
+	if inferred, createErr := ads.Create(ctx, owner, in); createErr != nil || inferred.Location != "NEVSKY" {
+		t.Fatalf("dorm location not inferred: %+v %v", inferred, createErr)
 	}
 }
 func TestConcurrentListingLimitAndLifecycle(t *testing.T) {

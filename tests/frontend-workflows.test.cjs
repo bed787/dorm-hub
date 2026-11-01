@@ -38,7 +38,7 @@ function appHarness(responder) {
     },
   });
   const source = fs.readFileSync(path.join(__dirname, '../web/assets/app.js'), 'utf8');
-  vm.runInContext(source + '\n globalThis.workflows = {state, saveListing, queuePhotos, releasePending, profileView, draftHasContent, statusBadge, changeSavedPhoto, captureEditor, enterApp, authPath, loginView};', context);
+  vm.runInContext(source + '\n globalThis.workflows = {state, saveListing, queuePhotos, releasePending, profileView, draftHasContent, statusBadge, changeSavedPhoto, captureEditor, enterApp, authPath, loginView, feedView, listingFields, listingPreview};', context);
   return {...context.workflows, context, location, revoked, listeners, view, app};
 }
 function response(data) {
@@ -408,6 +408,35 @@ function emptyDraftFields() {
   for (const key of ['title', 'description', 'category', 'location', 'telegram', 'vk']) data.set(key, '');
   return data;
 }
+
+test('overview uses category rows, while a full category uses the normal listing endpoint', async () => {
+  const calls=[];
+  const listing={id:7,author_id:2,kind:'offer',category:'clothes',title:'<img onerror=bad>',description:'Описание',location:'PETRODVORTSOVY',dorm_name:'№ 13 — ул. Ботаническая',photos:[],price_mode:'unset',status:'active'};
+  const h=appHarness(url=>{calls.push(url);return response(url.startsWith('/api/showcase')?{total:1,kind_totals:{offer:1,request:0},sections:[{code:'clothes',name:'Одежда и обувь',total:1,items:[listing]}]}:{items:[listing],total:1,limit:24,offset:0});});
+  h.state.me={id:1};h.state.catalog={categories:[{code:'clothes',name:'Одежда и обувь'}],locations:[{code:'PETRODVORTSOVY',name:'ПУНК'}],dorms:[]};
+  await h.feedView('feed',new URLSearchParams('location=PETRODVORTSOVY'),h.state.seq);
+  assert.match(calls[0],/^\/api\/showcase\?/);
+  assert.match(calls[0],/kind=offer/);
+  assert.match(h.view.innerHTML,/showcase-rail/);
+  assert.match(h.view.innerHTML,/Смотреть все/);
+  assert.match(h.view.innerHTML,/Общежитие № 13/);
+  assert.doesNotMatch(h.view.innerHTML,/<img onerror/);
+  await h.feedView('feed',new URLSearchParams('category=clothes&kind=request'),h.state.seq);
+  assert.match(calls[1],/^\/api\/listings\?/);
+  assert.doesNotMatch(h.view.innerHTML,/showcase-rail/);
+  assert.match(h.view.innerHTML,/compact-cards/);
+});
+
+test('one place field derives its group and external addresses do not retain a dorm', () => {
+  const h=appHarness(()=>{throw new Error('unexpected request');});
+  h.state.catalog={dorms:[{id:8,location:'KHALTURINA',name:'№ 8'}]};
+  const data=fields();data.set('place','8');data.set('address','Старый адрес');
+  let input=h.listingFields(data);
+  assert.equal(input.location,'KHALTURINA');assert.equal(input.dorm_id,8);assert.equal(input.address,'');
+  data.set('place','EXTERNAL');data.set('address','Примерная, 12');input=h.listingFields(data);
+  assert.equal(input.location,'EXTERNAL');assert.equal(input.dorm_id,null);assert.equal(input.address,'Примерная, 12');
+  data.set('place','');input=h.listingFields(data);assert.equal(input.location,'');assert.equal(input.dorm_id,null);
+});
 function rejectedRequest(status, code, message) {
   return {ok: false, status, json: async () => ({error: {code, message}})};
 }
@@ -521,4 +550,33 @@ test('a draft with only a photo waits for processing before the empty check', as
   await saving;
   assert.deepEqual(calls, ['/api/listings', '/api/listings/11/photos']);
   assert.equal(h.state.formListing.photos.length, 1);
+});
+
+test('preview waits for image work and shows local crops without saving or publishing', async () => {
+  const h = appHarness(() => { throw new Error('Preview must not send HTTP requests'); });
+  const processing = deferred();
+  const data = fields();
+  data.set('title', '<Лампа>'); data.set('place', '8');
+  const form = {isConnected: true, dataset: {}, values: data};
+  h.context.FormData = class extends Map { constructor(value) { super(value.values); } };
+  h.state.catalog = {dorms: [{id: 8, location: 'KHALTURINA', name: '№ 8'}]};
+  h.state.formListing = {id: 7, photos: [{id: 'original'}]};
+  h.state.pending = [
+    {...photo('crop'), replaceID: 'original'}, photo('new'),
+  ];
+  h.state.editor = {form, user: 1, dirty: 0, saved: 0, work: Promise.resolve(), storeWork: Promise.resolve()};
+  h.state.photoWork = processing.promise;
+  let finished = false;
+  const preview = h.listingPreview(form).then(html => { finished = true; return html; });
+  await new Promise(setImmediate);
+  assert.equal(finished, false);
+  processing.resolve();
+  const html = await preview;
+  assert.match(html, /blob:crop/); assert.match(html, /blob:new/);
+  assert.doesNotMatch(html, /api\/photos\/original/);
+  assert.match(html, /&lt;Лампа&gt;/); assert.doesNotMatch(html, /<Лампа>/);
+  assert.match(html, /Общежитие № 8/);
+  assert.equal(h.state.pending.length, 2);
+  assert.equal(h.state.formListing.id, 7);
+  assert.equal(h.state.editor.input.location, 'KHALTURINA');
 });

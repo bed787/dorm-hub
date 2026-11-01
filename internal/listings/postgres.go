@@ -3,6 +3,7 @@ package listings
 import (
 	"context"
 	"dorm-hub/internal/domain"
+	"dorm-hub/internal/locations"
 	"dorm-hub/internal/platform/idempotency"
 	"dorm-hub/internal/platform/postgres"
 	"encoding/json"
@@ -15,7 +16,7 @@ import (
 
 const effective = `l.status`
 const visible = `l.deleted_at IS NULL AND NOT l.hidden AND u.active AND NOT u.blocked AND l.status='active'`
-const selection = `l.id,l.author_id,u.nickname,l.kind,coalesce(l.category,''),l.title,l.description,coalesce(l.location,''),l.address,l.dorm_id,coalesce(d.name,''),l.price_mode,l.price_minor,l.telegram,l.vk,` + effective + `,l.completed_at,l.hidden,l.created_at,l.updated_at,l.archive_kind,l.moderation_comment,l.revision,l.completion_reason,
+const selection = `l.id,l.author_id,u.nickname,l.kind,coalesce(l.category,''),l.category_needs_review,l.title,l.description,coalesce(l.location,''),l.address,l.dorm_id,coalesce(d.name,''),l.price_mode,l.price_minor,l.telegram,l.vk,` + effective + `,l.completed_at,l.hidden,l.created_at,l.updated_at,l.archive_kind,l.moderation_comment,l.revision,l.completion_reason,
  EXISTS(SELECT 1 FROM favorites f WHERE f.listing_id=l.id AND f.user_id=$1),
  coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.id,'width',p.width,'height',p.height,'position',p.position) ORDER BY p.position) FROM photos p WHERE p.listing_id=l.id),'[]'::jsonb)`
 const source = ` FROM listings l JOIN users u ON u.id=l.author_id LEFT JOIN dorms d ON d.id=l.dorm_id `
@@ -23,7 +24,7 @@ const source = ` FROM listings l JOIN users u ON u.id=l.author_id LEFT JOIN dorm
 func scan(row pgx.Row) (Listing, error) {
 	var l Listing
 	var photos []byte
-	err := row.Scan(&l.ID, &l.AuthorID, &l.AuthorName, &l.Kind, &l.Category, &l.Title, &l.Description, &l.Location, &l.Address, &l.DormID, &l.DormName, &l.PriceMode, &l.PriceMinor, &l.Telegram, &l.VK, &l.Status, &l.CompletedAt, &l.Hidden, &l.CreatedAt, &l.UpdatedAt, &l.ArchiveKind, &l.ModerationComment, &l.Revision, &l.CompletionReason, &l.Favorite, &photos)
+	err := row.Scan(&l.ID, &l.AuthorID, &l.AuthorName, &l.Kind, &l.Category, &l.CategoryNeedsReview, &l.Title, &l.Description, &l.Location, &l.Address, &l.DormID, &l.DormName, &l.PriceMode, &l.PriceMinor, &l.Telegram, &l.VK, &l.Status, &l.CompletedAt, &l.Hidden, &l.CreatedAt, &l.UpdatedAt, &l.ArchiveKind, &l.ModerationComment, &l.Revision, &l.CompletionReason, &l.Favorite, &photos)
 	if err != nil {
 		return l, postgres.Error(err)
 	}
@@ -59,6 +60,11 @@ func (s *Service) ListForViewer(ctx context.Context, viewer int64, f Filter, adm
 	switch f.Scope {
 	case "mine":
 		conditions = append(conditions, `l.author_id=$1 AND l.deleted_at IS NULL`)
+	case "categorization":
+		if !admin {
+			return page, domain.ErrForbidden
+		}
+		conditions = append(conditions, `l.category_needs_review AND l.deleted_at IS NULL`)
 	case "review":
 		if !admin {
 			return page, domain.ErrForbidden
@@ -92,13 +98,13 @@ func (s *Service) ListForViewer(ctx context.Context, viewer int64, f Filter, adm
 		add(`l.kind=$%d`, f.Kind)
 	}
 	if f.Category != "" {
-		if !oneOf(f.Category, "things", "study", "help", "housing", "other") {
+		if !locations.ValidCategory(f.Category) {
 			return page, domain.Invalid("Неверная категория")
 		}
 		add(`l.category=$%d`, f.Category)
 	}
 	if f.Location != "" {
-		if !oneOf(f.Location, "VASILEOSTROVSKY", "PETRODVORTSOVY", "NEVSKY", "EXTERNAL") {
+		if !locations.ValidLocation(f.Location) {
 			return page, domain.Invalid("Неверное местоположение")
 		}
 		add(`l.location=$%d`, f.Location)
@@ -211,6 +217,9 @@ func (s *Service) CreateOnce(ctx context.Context, author int64, in Input, key st
 		}
 	}
 	in = clean(in)
+	if err := s.resolveLocation(ctx, &in); err != nil {
+		return Listing{}, err
+	}
 	validate := Validate
 	if in.Draft {
 		validate = ValidateDraft
@@ -275,6 +284,9 @@ func (s *Service) CreateOnce(ctx context.Context, author int64, in Input, key st
 }
 func (s *Service) Update(ctx context.Context, id, author int64, in Input) (Listing, error) {
 	in = clean(in)
+	if err := s.resolveLocation(ctx, &in); err != nil {
+		return Listing{}, err
+	}
 	validate := Validate
 	if in.Draft {
 		validate = ValidateDraft
@@ -323,7 +335,7 @@ func (s *Service) Update(ctx context.Context, id, author int64, in Input) (Listi
 			status, archive = "pending", ""
 		}
 	}
-	_, err = tx.Exec(ctx, `UPDATE listings SET kind=$3,category=NULLIF($4,''),title=$5,description=$6,location=NULLIF($7,''),dorm_id=$8,price_mode=$9,price_minor=$10,telegram=$11,vk=$12,status=$13,archive_kind=$14,address=$15,revision=revision+1,updated_at=now() WHERE id=$1 AND author_id=$2`, id, author, in.Kind, in.Category, in.Title, in.Description, in.Location, in.DormID, in.PriceMode, in.PriceMinor, in.Telegram, in.VK, status, archive, in.Address)
+	_, err = tx.Exec(ctx, `UPDATE listings SET kind=$3,category_needs_review=category_needs_review AND category IS NOT DISTINCT FROM NULLIF($4,''),category=NULLIF($4,''),title=$5,description=$6,location=NULLIF($7,''),dorm_id=$8,price_mode=$9,price_minor=$10,telegram=$11,vk=$12,status=$13,archive_kind=$14,address=$15,revision=revision+1,updated_at=now() WHERE id=$1 AND author_id=$2`, id, author, in.Kind, in.Category, in.Title, in.Description, in.Location, in.DormID, in.PriceMode, in.PriceMinor, in.Telegram, in.VK, status, archive, in.Address)
 	if err != nil {
 		return Listing{}, postgres.Error(err)
 	}

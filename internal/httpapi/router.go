@@ -92,6 +92,8 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("PUT /api/users/{id}/star", true, false, a.star)
 	route("DELETE /api/users/{id}/star", true, false, a.star)
 	route("GET /api/listings", true, false, a.feed)
+	route("GET /api/showcase", true, false, a.showcase)
+	route("PUT /api/admin/listings/{id}/category", true, true, a.setCategory)
 	route("POST /api/listings", true, false, a.createListing)
 	route("GET /api/listings/{id}", true, false, a.getListing)
 	route("PUT /api/listings/{id}", true, false, a.updateListing)

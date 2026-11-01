@@ -55,7 +55,8 @@ func (a *API) requestLoginCode(w http.ResponseWriter, r *http.Request, adminOnly
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
-
+	// Administrator recovery is restricted to configured/existing administrators.
+	// It is not the public account registration flow and records no fake consent.
 	if adminOnly {
 		if err := a.auth.Request(r.Context(), in.Email); err != nil {
 			return err
@@ -210,6 +211,37 @@ func (a *API) getListing(w http.ResponseWriter, r *http.Request, s auth.Session)
 		return err
 	}
 	l, err := a.listings.Get(r.Context(), id, s.User.ID, s.User.IsAdmin)
+	if err != nil {
+		return err
+	}
+	respond(w, 200, l)
+	return nil
+}
+func (a *API) showcase(w http.ResponseWriter, r *http.Request, s auth.Session) error {
+	f, err := filter(r)
+	if err != nil {
+		return err
+	}
+	result, err := a.listings.Showcase(r.Context(), s.User.ID, f, r.URL.Query().Get("seed"))
+	if err != nil {
+		return err
+	}
+	respond(w, 200, result)
+	return nil
+}
+func (a *API) setCategory(w http.ResponseWriter, r *http.Request, s auth.Session) error {
+	id, err := positiveID(r)
+	if err != nil {
+		return err
+	}
+	var in struct {
+		Category string `json:"category"`
+		Revision int64  `json:"revision"`
+	}
+	if err = decode(w, r, &in); err != nil {
+		return err
+	}
+	l, err := a.listings.SetCategory(r.Context(), id, s.User.ID, in.Revision, in.Category)
 	if err != nil {
 		return err
 	}
@@ -484,6 +516,9 @@ func (a *API) reviewQueue(w http.ResponseWriter, r *http.Request, s auth.Session
 		return err
 	}
 	f.Scope = "review"
+	if r.URL.Query().Get("category_review") == "true" {
+		f.Scope = "categorization"
+	}
 	f.Status = ""
 	f.Limit = 24
 	page, err := a.listings.ListForViewer(r.Context(), s.User.ID, f, true)

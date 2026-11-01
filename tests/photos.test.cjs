@@ -225,13 +225,14 @@ function listing(overrides = {}) {
     category:'things',kind:'offer',price_mode:'unset',location:'EXTERNAL',address:'Улица, 12',
     status:'active',created_at:'2026-10-21T00:00:00Z',photos:[{id:'saved',position:0}], ...overrides};
 }
-test('kind belongs to the card text and public feed omits the redundant active status', () => {
+test('compact public cards omit redundant labels while moderation keeps status and kind', () => {
   const h = harness(); h.state.me = {id:3};
   const html = h.card(listing());
-  assert.match(html, /class="card-content"><div class="card-kind">Предложение/);
+  assert.match(html, /listing-card compact-card/);
+  assert.doesNotMatch(html, /Предложение|Заявка|card-description/);
   assert.doesNotMatch(html.split('class="card-content"')[0], /Предложение|Заявка/);
   assert.doesNotMatch(html, /Опубликовано/);
-  assert.match(html, /Не УНК университета · Улица, 12/);
+  assert.match(html, /Улица, 12/);
   assert.match(h.card(listing(),'mine'), /Опубликовано/);
   assert.match(h.card(listing({kind:'request', status:'pending'}),'moderation'), /Заявка/);
   assert.match(h.card(listing({status:'pending'}),'moderation'), /На проверке/);

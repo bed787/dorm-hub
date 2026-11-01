@@ -26,12 +26,26 @@ type Catalog struct {
 type Service struct{ db *pgxpool.Pool }
 
 func New(db *pgxpool.Pool) *Service { return &Service{db} }
+func ValidCategory(code string) bool {
+	switch code {
+	case "things", "clothes", "accessories", "home", "study", "help", "other":
+		return true
+	}
+	return false
+}
+func ValidLocation(code string) bool {
+	switch code {
+	case "PETRODVORTSOVY", "KHALTURINA", "GSOM", "VASILEOSTROVSKY", "NEVSKY", "EXTERNAL":
+		return true
+	}
+	return false
+}
 func (s *Service) Catalog(ctx context.Context) (Catalog, error) {
 	c := Catalog{Locations: []Item{}, Categories: []Item{}, Dorms: []Dorm{}}
 	for _, source := range []struct {
 		query  string
 		target *[]Item
-	}{{`SELECT code,name FROM locations WHERE code IN ('VASILEOSTROVSKY','PETRODVORTSOVY','NEVSKY','EXTERNAL') ORDER BY CASE code WHEN 'VASILEOSTROVSKY' THEN 1 WHEN 'PETRODVORTSOVY' THEN 2 WHEN 'NEVSKY' THEN 3 ELSE 4 END`, &c.Locations}, {`SELECT code,name FROM categories ORDER BY CASE code WHEN 'things' THEN 1 WHEN 'study' THEN 2 WHEN 'help' THEN 3 WHEN 'housing' THEN 4 ELSE 5 END`, &c.Categories}} {
+	}{{`SELECT code,name FROM locations WHERE code IN ('PETRODVORTSOVY','KHALTURINA','GSOM','VASILEOSTROVSKY','NEVSKY','EXTERNAL') ORDER BY CASE code WHEN 'PETRODVORTSOVY' THEN 1 WHEN 'KHALTURINA' THEN 2 WHEN 'GSOM' THEN 3 WHEN 'VASILEOSTROVSKY' THEN 4 WHEN 'NEVSKY' THEN 5 ELSE 6 END`, &c.Locations}, {`SELECT code,name FROM categories ORDER BY CASE code WHEN 'things' THEN 1 WHEN 'clothes' THEN 2 WHEN 'accessories' THEN 3 WHEN 'home' THEN 4 WHEN 'study' THEN 5 WHEN 'help' THEN 6 ELSE 7 END`, &c.Categories}} {
 		rows, err := s.db.Query(ctx, source.query)
 		if err != nil {
 			return c, err
@@ -50,7 +64,7 @@ func (s *Service) Catalog(ctx context.Context) (Catalog, error) {
 			return c, err
 		}
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,location,name FROM dorms ORDER BY location,substring(name from '^№ ([0-9]+)')::numeric NULLS LAST,name`)
+	rows, err := s.db.Query(ctx, `SELECT id,location,name FROM dorms ORDER BY substring(name from '^№\s*([0-9]+)')::numeric NULLS LAST,name,id`)
 	if err != nil {
 		return c, err
 	}
@@ -65,8 +79,8 @@ func (s *Service) Catalog(ctx context.Context) (Catalog, error) {
 	return c, rows.Err()
 }
 func (s *Service) CreateDorm(ctx context.Context, location, name string) (Dorm, error) {
-	if location != "VASILEOSTROVSKY" && location != "PETRODVORTSOVY" && location != "NEVSKY" {
-		return Dorm{}, domain.Invalid("Выберите район")
+	if !ValidLocation(location) || location == "EXTERNAL" {
+		return Dorm{}, domain.Invalid("Выберите местоположение")
 	}
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 1 || n > 100 {

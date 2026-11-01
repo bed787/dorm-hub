@@ -21,7 +21,7 @@ localhost или частный/loopback/link-local IP; схема и порт �
 | POST /api/me/deletion-code | Отдельный код удаления в текущей сессии |
 | DELETE /api/me | `{code}`; полное удаление, ответ `{deleted,files_pending}` |
 | GET /api/statistics | `{completed_deals}` без индивидуальных показателей |
-| GET /api/catalog | Районы, общежития, категории |
+| GET /api/catalog | Местоположения, общежития, категории |
 | GET /api/users/{id} | Публичный профиль без почты |
 | PUT /api/users/{id}/star | Поставить звезду |
 | DELETE /api/users/{id}/star | Отозвать звезду |
@@ -30,7 +30,7 @@ localhost или частный/loopback/link-local IP; схема и порт �
 
 Создание/обновление: `kind,category,title,description,location,address,dorm_id,price_mode,
 price_minor,telegram,vk,draft,revision,has_photos`.
-`location=EXTERNAL` — «Не УНК университета»: `address` необязателен, до 300 символов, `dorm_id=null`. Для остальных локаций `address` должен быть пустым.
+`location=EXTERNAL` — «Другой адрес»: `address` необязателен, до 300 символов, `dorm_id=null`. Для остальных локаций `address` должен быть пустым. Если передан `dorm_id`, сервер определяет `location` по справочнику общежитий: отдельно выбирать его не нужно.
 `draft=true` допускает неполные поля. При отправке на проверку нужен хотя бы один
 валидный HTTPS-контакт в объявлении. Полная ссылка, `@username` Telegram
 или имя страницы VK нормализуются сервером перед сохранением. Цена — целое число копеек; 0 — бесплатно.
@@ -40,6 +40,7 @@ price_minor,telegram,vk,draft,revision,has_photos`.
 | Метод / адрес | Действие |
 |---|---|
 | GET /api/listings | Лента; scope=mine/favorites/admin_author, фильтры и пагинация |
+| GET /api/showcase | Категории с количеством и до 8 карточек; kind, location, seed |
 | POST /api/listings | Создать, с заголовком Idempotency-Key |
 | GET /api/listings/{id} | Карточка с status/archive_kind/moderation_comment/revision |
 | PUT /api/listings/{id} | Обновить; публикация снимается, нужна повторная проверка |
@@ -67,6 +68,8 @@ price_minor,telegram,vk,draft,revision,has_photos`.
 | Метод / адрес | Действие |
 |---|---|
 | GET /api/admin/listings | Очередь pending, пагинация |
+| GET /api/admin/listings?category_review=true | Старые объявления для распределения по категориям |
+| PUT /api/admin/listings/{id}/category | `{category,revision}`; изменить только категорию, сохранив статус |
 | POST /api/admin/listings/{id}/review | `{action:"approve"/"reject",revision,comment}` |
 | POST /api/reports | Жалоба `{target_type,target_id,reason}` |
 | GET /api/admin/reports | Жалобы |
@@ -79,6 +82,13 @@ price_minor,telegram,vk,draft,revision,has_photos`.
 Для отказа `comment` обязателен (3..2000 символов). Ревизия обязательна для обоих
 решений: несовпадение возвращает 409. Hide/show не заменяют approval: снятие
 блокировки не публикует объявление автоматически.
+
+На главной `/api/showcase` смешивает новые и более старые активные объявления,
+учитывая разнообразие авторов. `seed` — неотрицательное число до 13 цифр;
+одинаковый seed сохраняет порядок при неизменном наборе объявлений. По умолчанию
+он меняется каждые 4 часа. Пустые категории скрыты, остальные идут по количеству,
+«Другое» — в конце. `/api/listings` сохраняет обычную пагинацию и сортировку:
+поиск по соответствию запросу, категория без запроса — по дате.
 
 ## Лимиты
 

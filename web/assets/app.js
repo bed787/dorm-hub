@@ -21,6 +21,9 @@ const state = {
   maintenanceReason: "",
   legal: null,
   loginAcceptance: null,
+  showcaseSeed: String(Math.floor(Date.now() / 14400000)),
+  railOffsets: new Map(),
+  showcaseKey: "",
   adminLogin: location.pathname === "/admin-login",
 };
 const app = document.querySelector("#app"),
@@ -28,26 +31,37 @@ const app = document.querySelector("#app"),
 const landingHTML = document.querySelector("#landing") ? app.innerHTML : document.querySelector("#public-landing")?.innerHTML || "";
 const landingTitle = "Dorm Hub — объявления студентов СПбГУ";
 const categoryIcons = {
-  things: "◇",
-  study: "▤",
-  help: "✦",
-  housing: "⌂",
-  other: "◌",
+  things: '<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+  clothes: '<path d="m8 3-5 3 2 5 3-1v11h8V10l3 1 2-5-5-3a4 4 0 0 1-8 0Z"/>',
+  accessories: '<rect x="5" y="8" width="14" height="13" rx="2"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+  home: '<path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/>',
+  study: '<path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15"/>',
+  help: '<path d="M14 3a5 5 0 0 0-5 7l-6 6a3 3 0 0 0 4 4l6-6a5 5 0 0 0 7-5l-3 3-5-5 3-3Z"/>',
+  other: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
 };
-const locationNames = {
-  VASILEOSTROVSKY: "Василеостровский район",
-  PETRODVORTSOVY: "Петродворцовый район",
-  NEVSKY: "Невский район",
-  EXTERNAL: "Не УНК университета",
-  UNSPECIFIED: "Район нужно уточнить",
-};
-const categoryNames = {
-  things: "Вещи и техника",
-  study: "Учёба",
-  help: "Услуги и помощь",
-  housing: "Жильё и общежития",
-  other: "Другое",
-};
+function categoryIcon(code) {
+  const paths = Object.hasOwn(categoryIcons, code) ? categoryIcons[code] : categoryIcons.other;
+  return `<svg class="category-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths}</svg>`;
+}
+const categoryNames = {things: "Техника", clothes: "Одежда и обувь", accessories: "Аксессуары", home: "Для дома", study: "Книги и пособия", help: "Услуги", other: "Другое"};
+const categoryHints = {things: "Бытовая техника, электроника", clothes: "Одежда, обувь", accessories: "Украшения, сумки, обложки", home: "Мебель, посуда, предметы быта", study: "Книги, учебники, пособия", help: "Печать, ремонт, помощь", other: "Всё остальное"};
+const locationNames = {PETRODVORTSOVY: "ПУНК", KHALTURINA: "Халтурина", GSOM: "ВШМ", VASILEOSTROVSKY: "Васильевский остров", NEVSKY: "Солидарности", EXTERNAL: "Другой адрес", UNSPECIFIED: "Место не указано"};
+function dormCaption(dorm) { const number = dorm.name.match(/^№\s*(\d+)/); return number ? "Общежитие № " + number[1] : dorm.name; }
+function shortPlace(listing) { const dorm = listing.dorm_name?.match(/^№\s*(\d+)/); return dorm ? "Общежитие № " + dorm[1] : listing.location === "EXTERNAL" ? listing.address || "Другой адрес" : locationNames[listing.location] || ""; }
+function listingFields(data, strict = false) {
+  let location = data.get("location") || "", dormID = data.get("dorm_id") ? Number(data.get("dorm_id")) : null;
+  if (data.has("place")) {
+    const place = data.get("place"), dorm = state.catalog?.dorms.find(d => String(d.id) === place);
+    location = place === "EXTERNAL" ? "EXTERNAL" : dorm?.location || "";
+    dormID = dorm ? dorm.id : null;
+  }
+  let amount = null;
+  if (data.get("price_mode") === "price" && data.get("price")) {
+    try { amount = minor(data.get("price")); } catch (error) { if (strict) throw error; }
+  }
+  if (strict && data.get("price_mode") === "price" && amount === null) throw new Error("Укажи цену или выбери другой вариант стоимости");
+  return {draft: true, kind: data.get("kind") || "offer", category: data.get("category") || "", title: data.get("title") || "", description: data.get("description") || "", location, address: location === "EXTERNAL" ? data.get("address") || "" : "", dorm_id: location === "EXTERNAL" ? null : dormID, price_mode: data.get("price_mode") === "price" && amount === null ? "unset" : data.get("price_mode") || "unset", price_minor: amount, telegram: data.get("telegram") || "", vk: data.get("vk") || ""};
+}
 let toastTimer,
   autosaveTimer,
   routeGeneration = 0;
@@ -183,7 +197,7 @@ function photoMarkup(src, alt, lazy = false) {
   return `<img class="photo-foreground" src="${h(src)}" alt="${h(alt)}"${lazy ? ' loading="lazy"' : ''}><img class="photo-backdrop" src="${h(src)}" alt="" aria-hidden="true"${lazy ? ' loading="lazy"' : ''}>`;
 }
 function listingPlace(l) {
-  return [locationNames[l.location] || l.location, l.location === "EXTERNAL" ? l.address : l.dorm_name].filter(Boolean).join(" · ");
+  return [locationNames[l.location] || l.location, l.location === "EXTERNAL" ? l.address : l.dorm_name ? dormCaption({name:l.dorm_name}) : ""].filter(Boolean).join(" · ");
 }
 function openPhoto() {
   const image = document.querySelector("#gallery img");
@@ -195,7 +209,8 @@ function openPhoto() {
 }
 function card(l, scope = "feed") {
   const own = l.author_id === state.me.id;
-  return `<article class="listing-card" data-scope="${h(scope)}"><div class="card-media cat-${h(l.category)}"><a href="#/listing/${l.id}" class="${l.photos.length ? "photo-frame" : "card-placeholder"}" style="${l.photos.length ? "width:100%;height:100%" : ""}" aria-label="${h(l.title || "Без названия")}">${l.photos.length ? photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия", true) : categoryIcons[l.category] || "◇"}</a>${own || scope === "moderation" ? "" : `<button class="icon-button ${l.favorite ? "active" : ""}" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}" aria-label="${l.favorite ? "Убрать из избранного" : "В избранное"}">${l.favorite ? "♥" : "♡"}</button>`}</div><div class="card-content"><div class="card-kind">${l.kind === "offer" ? "Предложение" : "Заявка"}</div><span class="eyebrow muted" style="font-size:9px;letter-spacing:1px">${h(categoryNames[l.category])}</span><h3><a class="listing-card-link" href="#/listing/${l.id}">${h(l.title || "Без названия")}</a></h3><p class="card-description">${h(l.description)}</p><div class="row between wrap"><span class="price">${h(price(l))}</span>${scope === "feed" && l.status === "active" ? "" : statusBadge(l)}</div><div class="card-loc">⌖ ${h(listingPlace(l))}</div>${scope === "mine" && l.moderation_comment ? `<p class="small rejection-note">${h(l.moderation_comment)}</p>` : ""}<div class="card-footer"><a href="#/profile/${l.author_id}">${h(l.author_name)}</a><span>${h(ago(l.created_at))}</span></div></div></article>`;
+  if (scope === "feed") return `<article class="listing-card compact-card"><div class="card-media"><a href="#/listing/${l.id}" class="${l.photos.length ? "photo-frame" : "card-placeholder"}" style="width:100%;height:100%" aria-label="${h(l.title || "Без названия")}">${l.photos.length ? photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия", true) : categoryIcon(l.category)}</a>${own ? "" : `<button class="icon-button ${l.favorite ? "active" : ""}" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}" aria-label="${l.favorite ? "Убрать из избранного" : "В избранное"}">${l.favorite ? "♥" : "♡"}</button>`}</div><div class="card-content"><h3><a class="listing-card-link" href="#/listing/${l.id}">${h(l.title || "Без названия")}</a></h3><span class="price">${h(price(l))}</span><div class="card-loc">⌖ ${h(shortPlace(l))}</div></div></article>`;
+  return `<article class="listing-card" data-scope="${h(scope)}"><div class="card-media cat-${h(l.category)}"><a href="#/listing/${l.id}" class="${l.photos.length ? "photo-frame" : "card-placeholder"}" style="${l.photos.length ? "width:100%;height:100%" : ""}" aria-label="${h(l.title || "Без названия")}">${l.photos.length ? photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия", true) : categoryIcon(l.category)}</a>${own || scope === "moderation" ? "" : `<button class="icon-button ${l.favorite ? "active" : ""}" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}" aria-label="${l.favorite ? "Убрать из избранного" : "В избранное"}">${l.favorite ? "♥" : "♡"}</button>`}</div><div class="card-content"><div class="card-kind">${l.kind === "offer" ? "Предложение" : "Заявка"}</div><span class="eyebrow muted" style="font-size:9px;letter-spacing:1px">${h(categoryNames[l.category])}</span><h3><a class="listing-card-link" href="#/listing/${l.id}">${h(l.title || "Без названия")}</a></h3><p class="card-description">${h(l.description)}</p><div class="row between wrap"><span class="price">${h(price(l))}</span>${scope === "feed" && l.status === "active" ? "" : statusBadge(l)}</div><div class="card-loc">⌖ ${h(listingPlace(l))}</div>${scope === "mine" && l.moderation_comment ? `<p class="small rejection-note">${h(l.moderation_comment)}</p>` : ""}${scope === "moderation" ? `<button type="button" class="small muted category-correct" data-action="change-category" data-id="${l.id}" data-revision="${l.revision}" data-category="${h(l.category)}">Изменить категорию</button>` : ""}<div class="card-footer"><a href="#/profile/${l.author_id}">${h(l.author_name)}</a><span>${h(ago(l.created_at))}</span></div></div></article>`;
 }
 function pager(page, params, base) {
   if (page.total <= page.limit) return "";
@@ -208,56 +223,38 @@ function pager(page, params, base) {
 }
 async function feedView(page, params, seq) {
   const p = new URLSearchParams(params);
-  if (page === "mine") {
-    p.set("scope", "mine");
-    if (!p.has("status")) p.set("status", "active");
-  } else if (page === "favorites") p.set("scope", "favorites");
-  else p.set("scope", "feed");
-  const result = await api("/listings?" + p.toString());
+  if (page === "mine") { p.set("scope", "mine"); if (!p.has("status")) p.set("status", "active"); }
+  else p.set("scope", page === "favorites" ? "favorites" : "feed");
+  if (page === "feed") { if (!p.get("kind")) p.set("kind", "offer"); p.delete("dorm_id"); }
+  const overview = page === "feed" && !p.get("q") && !p.get("category") && !p.get("all") && !p.get("author_id");
+  const request = new URLSearchParams(p); request.delete("all");
+  if (overview) { request.delete("offset"); request.set("seed", state.showcaseSeed); }
+  const result = await api((overview ? "/showcase?" : "/listings?") + request);
   if (seq !== state.seq) return;
-  let head = `<div class="page-head"><h1>${page === "feed" ? "Объявления" : page === "mine" ? "Мои объявления" : "Избранное"}</h1></div>`;
-  const tabs =
-    page === "mine"
-      ? [
-          ["active", "Опубликовано"],
-          ["pending", "На проверке"],
-          ["archived", "Архив"],
-          ["completed", "Завершено"],
-        ]
-      : [
-          ["", "Все объявления"],
-          ["offer", "Предложения"],
-          ["request", "Заявки"],
-        ];
+  const link = (changes, remove = []) => {
+    const q = new URLSearchParams(p); q.delete("offset");
+    for (const key of remove) q.delete(key);
+    for (const [key, value] of Object.entries(changes)) value ? q.set(key, value) : q.delete(key);
+    return "#/" + page + "?" + h(q.toString());
+  };
+  const title = page === "mine" ? "Мои объявления" : page === "favorites" ? "Избранное" : p.get("q") ? "Поиск" : categoryNames[p.get("category")] || "Объявления";
+  const tabs = page === "mine" ? [["active","Опубликовано"],["pending","На проверке"],["archived","Архив"],["completed","Завершено"]] : page === "feed" ? [["offer","Предлагают"],["request","Ищут"]] : [["","Все"],["offer","Предлагают"],["request","Ищут"]];
   const key = page === "mine" ? "status" : "kind";
-  head += `<nav class="tabs">${tabs
-    .map(([value, label]) => {
-      const tab = new URLSearchParams(p);
-      value ? tab.set(key, value) : tab.delete(key);
-      tab.delete("offset");
-      return `<a class="${(p.get(key) || "") === value ? "selected" : ""}" href="#/${page}?${h(tab.toString())}">${label}</a>`;
-    })
-    .join("")}</nav>`;
-  head += `<form class="filters" id="filter-form" data-page="${page}"><select name="category" aria-label="Категория">${options(state.catalog.categories, p.get("category"), "Все категории")}</select><select name="location" aria-label="Местоположение">${options(state.catalog.locations, p.get("location"), "Все местоположения")}</select><select name="dorm_id" aria-label="Общежитие" ${!p.get("location") || p.get("location") === "EXTERNAL" ? "disabled" : ""}>${dormOptions(p.get("location"), p.get("dorm_id"), "Все общежития")}</select><input type="hidden" name="kind" value="${h(p.get("kind") || "")}"><input type="hidden" name="status" value="${h(p.get("status") || "")}"><input type="hidden" name="q" value="${h(p.get("q") || "")}"><button class="button plain" type="submit">Применить</button>${p.get("q") ? `<a class="button plain" href="#/${page}">Сбросить поиск</a>` : ""}</form>`;
-  mount(
-    head +
-      `<div class="feed-meta">${p.get("q") ? "По запросу «" + h(p.get("q")) + "» · " : ""}${result.total} объявлений</div>` +
-      (result.items.length
-        ? `<div class="cards">${result.items.map((l) => card(l, page === "mine" ? "mine" : "feed")).join("")}</div>${pager(result, p, page)}`
-        : empty(
-            page === "favorites"
-              ? "Пока ничего не сохранено"
-              : "Нет объявлений",
-            page === "favorites"
-              ? "Нажми на сердечко у объявления, чтобы добавить его сюда."
-              : "Попробуй другие фильтры или опубликуй первое объявление.",
-            `<a class="button" href="#/${page === "favorites" ? "feed" : "new"}">${page === "favorites" ? "В общую ленту" : "Создать объявление"}</a>`,
-          )),
-    seq,
-  );
-  const search = document.querySelector("#search-form input");
-  if (search) search.value = p.get("q") || "";
+  let head = `<div class="browse-head"><div class="browse-heading"><h1>${h(title)}</h1><span class="feed-meta">${result.total} объявлений</span></div>${page === "feed" && !p.get("category") && !p.get("q") ? `<a class="small muted" href="${link({all: overview ? "1" : ""})}">${overview ? "Все новые ↗" : "По категориям"}</a>` : ""}${page === "feed" && p.get("category") ? `<a class="small muted" href="${link({},["category","all"])}">Все категории</a>` : ""}</div>`;
+  head += `<div class="browse-toolbar"><nav class="tabs">${tabs.map(([value,label]) => `<a class="${(p.get(key)||"") === value ? "selected" : ""}" href="${link({[key]:value})}">${label}${overview && result.kind_totals ? ` <span class="small muted">${result.kind_totals[value] || 0}</span>` : ""}</a>`).join("")}</nav><form class="filters" id="filter-form" data-page="${page}"><select name="location" aria-label="Где искать">${options(state.catalog.locations,p.get("location"),"Все места")}</select>${["kind","status","category","q","all"].map(k=>`<input type="hidden" name="${k}" value="${h(p.get(k)||"")}">`).join("")}<button class="button plain" type="submit">Применить</button></form></div>`;
+  if (page !== "mine") head += `<nav class="category-chips" aria-label="Категории"><a class="category-chip ${!p.get("category") ? "selected" : ""}" href="${link({category:""})}">Все</a>${state.catalog.categories.map(c=>`<a class="category-chip ${p.get("category") === c.code ? "selected" : ""}" href="${link({category:c.code},["all"])}">${h(c.name)}</a>`).join("")}</nav>`;
+  let content = "";
+  if (overview && result.sections.length) {
+    state.showcaseKey = p.get("kind") + "|" + (p.get("location")||"") + "|" + state.showcaseSeed;
+    content = result.sections.map(section => `<section class="showcase-section"><div class="showcase-heading"><h2>${h(section.name)}<span class="showcase-count">${section.total}</span></h2><div class="showcase-actions"><a href="${link({category:section.code})}">Смотреть все ↗</a><div class="showcase-arrows"><button type="button" data-action="rail-scroll" data-rail="${h(section.code)}" data-direction="-1" aria-label="${h(section.name)}: назад">‹</button><button type="button" data-action="rail-scroll" data-rail="${h(section.code)}" data-direction="1" aria-label="${h(section.name)}: вперёд">›</button></div></div></div><div class="showcase-rail" id="rail-${h(section.code)}" data-showcase-rail="${h(section.code)}">${section.items.map(l=>card(l)).join("")}</div></section>`).join("");
+  } else if (!overview && result.items.length) content = `<div class="cards ${page === "mine" ? "" : "compact-cards"}">${result.items.map(l=>card(l,page === "mine" ? "mine" : "feed")).join("")}</div>${pager(result,p,page)}`;
+  else content = empty(page === "favorites" ? "Пока ничего не сохранено" : "Нет объявлений", page === "favorites" ? "Нажми на сердечко у объявления." : "Попробуй другое место или категорию.", `<a class="button" href="#/new">Создать объявление</a>`);
+  if (p.get("q")) head += `<p class="small muted">По запросу «${h(p.get("q"))}»</p>`;
+  mount(head+content,seq);
+  if (overview) document.querySelectorAll("[data-showcase-rail]").forEach(rail => rail.scrollLeft = state.railOffsets.get(state.showcaseKey+":"+rail.dataset.showcaseRail)||0);
+  const search = document.querySelector("#search-form input"); if(search) search.value = p.get("q")||"";
 }
+
 async function detailView(id, seq) {
   const l = await api("/listings/" + id);
   if (seq !== state.seq) return;
@@ -272,7 +269,7 @@ async function detailView(id, seq) {
     .filter(Boolean)
     .join("");
   mount(
-    `<div class="breadcrumb"><a href="#/feed">← Лента</a> / ${h(categoryNames[l.category])}</div><div class="detail-grid"><section><div class="gallery" id="gallery">${l.photos.length ? `<button type="button" class="gallery-open photo-frame" data-action="open-photo" aria-label="Открыть фотографию целиком">${photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия")}</button>` : categoryIcons[l.category] || "◇"}</div>${l.photos.length > 1 ? `<div class="thumbs">${l.photos.map((p, i) => `<button data-action="gallery" data-photo="${h(p.id)}" aria-label="Фотография ${i + 1}"><img src="${photoURL(p.id)}" alt=""></button>`).join("")}</div>` : ""}<div class="panel" style="margin-top:24px"><h2>Описание</h2><div class="description">${linkify(l.description)}</div></div></section><section><div class="row wrap"><span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span><span class="pill gray">${h(categoryNames[l.category])}</span>${statusBadge(l)}</div><h1 class="detail-title">${h(l.title || "Без названия")}</h1><div class="detail-price price">${h(price(l))}</div><div class="meta-list"><div><span class="muted">Местоположение</span><strong>${h(locationNames[l.location] || l.location)}</strong></div>${l.location === "EXTERNAL" && l.address ? `<div><span class="muted">Адрес</span><strong>${h(l.address)}</strong></div>` : ""}${l.dorm_name ? `<div><span class="muted">Общежитие</span><strong>${h(l.dorm_name)}</strong></div>` : ""}<div><span class="muted">Опубликовано</span><span>${h(date(l.created_at))}</span></div></div>${own || state.me.is_admin ? moderationNotice(l) : ""}<div class="stack">${own ? `<a class="button" href="#/edit/${l.id}">Редактировать</a>${l.status === "active" ? `<button class="button secondary" data-action="complete" data-id="${l.id}">Завершить объявление</button>` : l.status === "archived" || l.status === "completed" ? `<button class="button secondary" data-action="transition" data-id="${l.id}" data-transition="submit" ${l.hidden ? "disabled" : ""}>Отправить на проверку</button>` : ""}${l.status !== "archived" ? `<button class="button plain" data-action="transition" data-id="${l.id}" data-transition="archive">Отложить в архив</button>` : ""}<button class="button plain danger-text" data-action="delete-listing" data-id="${l.id}">Удалить объявление</button>` : `${l.status === "active" || (state.me.is_admin && l.status === "pending") ? contacts : `<div class="notice">${l.status === "completed" ? "Автор завершил это объявление." : "Объявление доступно только автору и модератору."}</div>`}<button class="button plain" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}">${l.favorite ? "♥ Убрать из избранного" : "♡ Сохранить в избранное"}</button>`}</div><div class="seller"><a class="row" href="#/profile/${l.author_id}"><div class="avatar">${h(l.author_name[0])}</div><div><strong>${h(l.author_name)}</strong><div class="small muted">Профиль №${l.author_id} ↗</div></div></a></div><div class="row wrap" style="margin-top:20px">${state.me.is_admin && l.status === "pending" ? `<button class="button" data-action="review-approve" data-id="${l.id}" data-revision="${l.revision}">Одобрить</button><button class="button secondary" data-action="review-reject" data-id="${l.id}" data-revision="${l.revision}">Отклонить</button>` : ""}${!own ? `<button class="small muted" data-action="report" data-kind="listing" data-id="${l.id}">Пожаловаться</button>` : ""}${state.me.is_admin ? `<button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="${l.hidden ? "show" : "hide"}">${l.hidden ? "Показать" : "Скрыть"}</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="delete">Удалить</button>` : ""}</div></section></div>`,
+    `<div class="breadcrumb"><a href="#/feed">← Лента</a> / ${h(categoryNames[l.category])}</div><div class="detail-grid"><section><div class="gallery" id="gallery">${l.photos.length ? `<button type="button" class="gallery-open photo-frame" data-action="open-photo" aria-label="Открыть фотографию целиком">${photoMarkup(photoURL(l.photos[0].id), l.title || "Без названия")}</button>` : categoryIcon(l.category)}</div>${l.photos.length > 1 ? `<div class="thumbs">${l.photos.map((p, i) => `<button data-action="gallery" data-photo="${h(p.id)}" aria-label="Фотография ${i + 1}"><img src="${photoURL(p.id)}" alt=""></button>`).join("")}</div>` : ""}<div class="panel" style="margin-top:24px"><h2>Описание</h2><div class="description">${linkify(l.description)}</div></div></section><section><div class="row wrap"><span class="pill">${l.kind === "offer" ? "Предложение" : "Заявка"}</span><span class="pill gray">${h(categoryNames[l.category])}</span>${statusBadge(l)}</div><h1 class="detail-title">${h(l.title || "Без названия")}</h1><div class="detail-price price">${h(price(l))}</div><div class="meta-list"><div><span class="muted">Местоположение</span><strong>${h(locationNames[l.location] || l.location)}</strong></div>${l.location === "EXTERNAL" && l.address ? `<div><span class="muted">Адрес</span><strong>${h(l.address)}</strong></div>` : ""}${l.dorm_name ? `<div><span class="muted">Общежитие</span><strong>${h(dormCaption({name:l.dorm_name}))}</strong></div>` : ""}<div><span class="muted">Опубликовано</span><span>${h(date(l.created_at))}</span></div></div>${own || state.me.is_admin ? moderationNotice(l) : ""}<div class="stack">${own ? `<a class="button" href="#/edit/${l.id}">Редактировать</a>${l.status === "active" ? `<button class="button secondary" data-action="complete" data-id="${l.id}">Завершить объявление</button>` : l.status === "archived" || l.status === "completed" ? `<button class="button secondary" data-action="transition" data-id="${l.id}" data-transition="submit" ${l.hidden ? "disabled" : ""}>Отправить на проверку</button>` : ""}${l.status !== "archived" ? `<button class="button plain" data-action="transition" data-id="${l.id}" data-transition="archive">Отложить в архив</button>` : ""}<button class="button plain danger-text" data-action="delete-listing" data-id="${l.id}">Удалить объявление</button>` : `${l.status === "active" || (state.me.is_admin && l.status === "pending") ? contacts : `<div class="notice">${l.status === "completed" ? "Автор завершил это объявление." : "Объявление доступно только автору и модератору."}</div>`}<button class="button plain" data-action="favorite" data-id="${l.id}" data-value="${l.favorite}">${l.favorite ? "♥ Убрать из избранного" : "♡ Сохранить в избранное"}</button>`}</div><div class="seller"><a class="row" href="#/profile/${l.author_id}"><div class="avatar">${h(l.author_name[0])}</div><div><strong>${h(l.author_name)}</strong><div class="small muted">Профиль №${l.author_id} ↗</div></div></a></div><div class="row wrap" style="margin-top:20px">${state.me.is_admin && l.status === "pending" ? `<button class="button" data-action="review-approve" data-id="${l.id}" data-revision="${l.revision}">Одобрить</button><button class="button secondary" data-action="review-reject" data-id="${l.id}" data-revision="${l.revision}">Отклонить</button>` : ""}${!own ? `<button class="small muted" data-action="report" data-kind="listing" data-id="${l.id}">Пожаловаться</button>` : ""}${state.me.is_admin ? `<button class="small muted" data-action="change-category" data-id="${l.id}" data-revision="${l.revision}" data-category="${h(l.category)}">Категория</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="${l.hidden ? "show" : "hide"}">${l.hidden ? "Показать" : "Скрыть"}</button><button class="small muted" data-action="moderate" data-kind="listing" data-id="${l.id}" data-transition="delete">Удалить</button>` : ""}</div></section></div>`,
     seq,
   );
 }
@@ -286,7 +283,7 @@ async function profileView(id, params, seq) {
   ]);
   if (seq !== state.seq) return;
   mount(
-    `<section class="profile-head"><div class="avatar large">${h(user.nickname[0])}</div><div><h1>${h(user.nickname)}</h1><div class="profile-stats"><span>№${user.id}</span><span>С ${h(date(user.created_at))}</span><span>★ ${user.stars}</span></div></div><div class="row wrap" style="margin-left:auto">${user.id !== state.me.id && user.active !== false && !user.blocked ? `<button class="button ${user.starred ? "secondary" : ""}" data-action="star" data-id="${user.id}" data-value="${user.starred}">${user.starred ? "★ Отозвать звезду" : "☆ Поставить звезду"}</button><button class="button plain" data-action="report" data-kind="user" data-id="${user.id}">Пожаловаться</button>` : ""}</div></section>${state.me.is_admin && user.blocked ? '<div class="notice">Пользователь заблокирован. Публикации доступны для проверки модератором.</div>' : state.me.is_admin && user.active === false ? '<div class="notice">Аккаунт деактивирован. Публикации доступны для проверки модератором.</div>' : ""}<h2>Объявления пользователя</h2>${list.items.length ? `<div class="cards">${list.items.map((l) => card(l, state.me.is_admin ? "moderation" : "feed")).join("")}</div>${pager(list, listingParams, "profile/" + id)}` : empty("Нет доступных объявлений", "Активные публикации появятся здесь.")}`,
+    `<section class="profile-head"><div class="avatar large">${h(user.nickname[0])}</div><div><h1>${h(user.nickname)}</h1><div class="profile-stats"><span>№${user.id}</span><span>С ${h(date(user.created_at))}</span><span>★ ${user.stars}</span></div></div><div class="row wrap" style="margin-left:auto">${user.id !== state.me.id && user.active !== false && !user.blocked ? `<button class="button ${user.starred ? "secondary" : ""}" data-action="star" data-id="${user.id}" data-value="${user.starred}">${user.starred ? "★ Отозвать звезду" : "☆ Поставить звезду"}</button><button class="button plain" data-action="report" data-kind="user" data-id="${user.id}">Пожаловаться</button>` : ""}</div></section>${state.me.is_admin && user.blocked ? '<div class="notice">Пользователь заблокирован. Публикации доступны для проверки модератором.</div>' : state.me.is_admin && user.active === false ? '<div class="notice">Аккаунт деактивирован. Публикации доступны для проверки модератором.</div>' : ""}<h2>Объявления пользователя</h2>${list.items.length ? `<div class="cards ${state.me.is_admin ? "" : "compact-cards"}">${list.items.map((l) => card(l, state.me.is_admin ? "moderation" : "feed")).join("")}</div>${pager(list, listingParams, "profile/" + id)}` : empty("Нет доступных объявлений", "Активные публикации появятся здесь.")}`,
     seq,
   );
 }
@@ -297,7 +294,27 @@ function settingsView(seq) {
     seq,
   );
 }
-async function formView(id, seq) {
+async function listingPreview(form) {
+  const editor = state.editor;
+  clearTimeout(autosaveTimer);
+  let work;
+  do { work = state.photoWork; await work; await editor?.work.catch(() => {}); } while (work !== state.photoWork);
+  clearTimeout(autosaveTimer);
+  if (!form.isConnected || editor !== state.editor) throw new Error("Открой объявление заново");
+  const input = listingFields(new FormData(form), true);
+  if (!categoryNames[input.category]) throw new Error("Выбери категорию");
+  if (!input.location) throw new Error("Выбери общежитие или другой адрес");
+  if (!input.telegram.trim() && !input.vk.trim()) throw new Error("Укажи Telegram или VK");
+  if (input.title.trim().length < 3 || input.description.trim().length < 10) throw new Error("Заполни название и описание");
+  captureEditor(form);
+  const saved = state.formListing?.photos || [];
+  const sources = saved.map(p => state.pending.find(item => item.replaceID === p.id)?.url || photoURL(p.id))
+    .concat(state.pending.filter(p => !p.replaceID || !saved.some(photo => photo.id === p.replaceID)).map(p => p.url));
+  const dorm = state.catalog.dorms.find(d => d.id === input.dorm_id);
+  return `<div class="listing-preview"><div class="preview-photos">${sources[0] ? `<img src="${h(sources[0])}" alt="${h(input.title)}">` : `<div class="card-placeholder">${categoryIcon(input.category)}</div>`}${sources.length > 1 ? `<div class="preview-thumbnails">${sources.slice(1).map(src=>`<img src="${h(src)}" alt="Фотография объявления">`).join("")}</div>` : ""}</div><div class="preview-copy"><span class="small muted">${input.kind === "offer" ? "Предлагаю" : "Ищу"} · ${h(categoryNames[input.category])}</span><h2>${h(input.title)}</h2><div class="price">${h(price(input))}</div><p class="small muted">${h(dorm ? dormCaption(dorm) : input.address || "Другой адрес")}</p><div class="description">${linkify(input.description)}</div><p class="small">${h([input.telegram,input.vk].filter(Boolean).join(" · "))}</p></div></div>`;
+}
+
+async function formView(id, seq, params = new URLSearchParams()) {
   releasePending();
   state.formListing = null;
   state.createAttempt = null;
@@ -331,8 +348,8 @@ async function formView(id, seq) {
       }
     : null) ||
     l || {
-      kind: "offer",
-      category: "",
+      kind: params.get("kind") === "request" ? "request" : "offer",
+      category: state.catalog.categories.some(c => c.code === params.get("category")) ? params.get("category") : "",
       title: "",
       description: "",
       location: "",
@@ -341,8 +358,31 @@ async function formView(id, seq) {
       telegram: state.me.telegram,
       vk: state.me.vk,
     };
+  // A browser may still hold a draft from before the category migration.
+  if (!state.catalog.categories.some(c => c.code === v.category)) v.category = "";
   mount(
-    `<div class="page-head"><h1>${l ? "Редактировать объявление" : "Новое объявление"}</h1><p id="autosave-status" class="small muted" role="status">Черновик сохраняется автоматически в архив.</p></div>${l ? moderationNotice(l) : ""}<form id="listing-form" class="panel" style="max-width:950px"><div class="form-section"><h2>Основное</h2></div><div class="form-grid"><label class="field"><span>Тип</span><select name="kind">${option("offer", "Предложение", v.kind) + option("request", "Заявка", v.kind)}</select></label><label class="field"><span>Категория</span><select name="category" required>${options(state.catalog.categories, v.category)}</select></label><label class="field full"><span>Название</span><input name="title" minlength="3" maxlength="120" value="${h(v.title)}" required placeholder="Например, настольная лампа для комнаты"></label><label class="field full"><span>Описание</span><textarea name="description" minlength="10" maxlength="10000" required placeholder="Состояние, подробности, условия передачи или помощи…">${h(v.description)}</textarea></label><label class="field"><span>Местоположение</span><select name="location" required>${options(state.catalog.locations, v.location)}</select></label><label class="field" id="dorm-field" ${v.location === "EXTERNAL" ? "hidden" : ""}><span>Общежитие · необязательно</span><select name="dorm_id" ${!locationNames[v.location] || v.location === "UNSPECIFIED" || v.location === "EXTERNAL" ? "disabled" : ""}>${dormOptions(v.location, v.dorm_id)}</select></label><label class="field" id="address-field" ${v.location !== "EXTERNAL" ? "hidden" : ""}><span>Адрес · необязательно</span><input name="address" maxlength="300" value="${h(v.location === "EXTERNAL" ? v.address : "")}" ${v.location !== "EXTERNAL" ? "disabled" : ""} placeholder="Улица, дом или удобное место встречи"></label><label class="field"><span>Стоимость</span><select name="price_mode">${option("unset", "Не указано", v.price_mode) + option("price", "Цена", v.price_mode) + option("exchange", "Обмен", v.price_mode)}</select></label><label class="field" id="price-field" ${v.price_mode !== "price" ? "hidden" : ""}><span>Цена, ₽</span><input name="price" type="text" inputmode="decimal" value="${recover && recovery.raw_price !== undefined ? h(recovery.raw_price) : v.price_minor != null ? h(v.price_minor / 100) : ""}" placeholder="0,00"><span class="hint">0 — бесплатно.</span></label></div><div class="form-section" style="margin-top:28px"><h2>Фотографии</h2><p>До 10 фотографий JPEG или PNG. Большие фотографии сжимаются автоматически. Первая — обложка.</p></div><div id="photo-list" class="photo-list"></div><label class="upload"><strong>＋ Добавить фотографии</strong><span class="small muted">Обрезку можно настроить для каждой фотографии.</span><input id="photo-input" type="file" accept="image/jpeg,image/png" multiple></label><div class="form-section" style="margin-top:28px"><h2>Контакты</h2><p>Укажи хотя бы один контакт для отправки на проверку. Контакт будет виден авторизованным участникам в объявлении. Профиль заполнять необязательно; изменения здесь относятся только к этому объявлению.</p></div><div class="form-grid"><label class="field"><span>Telegram</span><input type="text" name="telegram" maxlength="300" value="${h(v.telegram)}" placeholder="@username или https://t.me/username"></label><label class="field"><span>VK</span><input type="text" name="vk" maxlength="300" value="${h(v.vk)}" placeholder="username или https://vk.com/username"></label></div><div class="form-actions"><button class="button" type="submit">${l?.status === "completed" ? "Сохранить изменения" : "Отправить на проверку"}</button><button class="button secondary" type="submit" name="save_mode" value="draft" formnovalidate>Сохранить в архив</button><a class="button plain" href="#/mine?status=archived">Закрыть</a><span class="small muted">Для черновика контакт не требуется.</span></div></form>`,
+    `<div class="page-head"><h1>${l ? "Редактировать объявление" : "Новое объявление"}</h1><p id="autosave-status" class="small muted" role="status">Черновик сохраняется автоматически.</p></div>${l ? moderationNotice(l) : ""}
+    <form id="listing-form" class="panel editor-wizard">
+      <nav class="editor-steps" aria-label="Создание объявления"><span data-step-label="1"><b>1</b>Категория</span><span data-step-label="2"><b>2</b>Объявление</span><span data-step-label="3"><b>3</b>Проверка</span></nav>
+      <input type="hidden" name="kind" value="${h(v.kind)}"><input type="hidden" name="category" value="${h(v.category)}">
+      <fieldset data-editor-step="1"><legend>Что хочешь разместить?</legend>
+        <div class="kind-choices"><button type="button" data-wizard-kind="offer">Предлагаю</button><button type="button" data-wizard-kind="request">Ищу</button></div>
+        <div class="category-choices">${state.catalog.categories.map(c=>`<button type="button" class="category-choice" data-wizard-category="${h(c.code)}"><span class="category-symbol" aria-hidden="true">${categoryIcon(c.code)}</span><span>${h(c.name)}<small>${h(categoryHints[c.code]||"")}</small></span></button>`).join("")}</div>
+        <div class="wizard-actions"><a class="small muted" href="#/mine?status=archived">Закрыть</a><button type="button" class="button" data-wizard="next">Продолжить →</button></div>
+      </fieldset>
+      <fieldset data-editor-step="2" hidden><legend>Объявление</legend><div class="form-grid">
+        <label class="field full"><span>Название</span><input name="title" minlength="3" maxlength="120" value="${h(v.title)}" required placeholder="Например, настольная лампа"></label>
+        <label class="field full"><span>Описание</span><textarea name="description" minlength="10" maxlength="10000" required placeholder="Состояние, подробности, как забрать">${h(v.description)}</textarea></label>
+        <label class="field full"><span>Местоположение</span><select name="place" required aria-label="Общежитие">${option("","Выбери общежитие",v.dorm_id || (v.location === "EXTERNAL" ? "EXTERNAL" : ""))}${state.catalog.dorms.map(d=>option(d.id,dormCaption(d)+(d.location === "GSOM" ? " · ВШМ" : ""),v.dorm_id)).join("")}${option("EXTERNAL","Другой адрес",v.location === "EXTERNAL" ? "EXTERNAL" : "")}</select></label>
+        <label class="field full" id="address-field" ${v.location !== "EXTERNAL" ? "hidden" : ""}><span>Адрес · необязательно</span><input name="address" maxlength="300" value="${h(v.address||"")}" ${v.location !== "EXTERNAL" ? "disabled" : ""} placeholder="Улица, дом или место встречи"></label>
+        <label class="field"><span>Стоимость</span><select name="price_mode">${option("unset","Не указано",v.price_mode)+option("price","Цена",v.price_mode)+option("exchange","Обмен",v.price_mode)}</select></label>
+        <label class="field" id="price-field" ${v.price_mode !== "price" ? "hidden" : ""}><span>Цена, ₽</span><input name="price" type="text" inputmode="decimal" value="${recover && recovery.raw_price !== undefined ? h(recovery.raw_price) : v.price_minor != null ? h(v.price_minor/100) : ""}" placeholder="0 — бесплатно"></label>
+      </div><div class="form-section"><h2>Фотографии</h2><p>До 10 фотографий. Большие сжимаются автоматически.</p></div><div id="photo-list" class="photo-list"></div><label class="upload"><strong>＋ Добавить фотографии</strong><span class="small muted">Обрезать можно по кнопке на фотографии.</span><input id="photo-input" type="file" accept="image/jpeg,image/png" multiple></label>
+      <div class="form-section"><h2>Контакты</h2><p>Укажи хотя бы один контакт.</p></div><div class="form-grid"><label class="field"><span>Telegram</span><input name="telegram" maxlength="300" value="${h(v.telegram)}" placeholder="@username"></label><label class="field"><span>VK</span><input name="vk" maxlength="300" value="${h(v.vk)}" placeholder="Имя или ссылка на профиль"></label></div>
+      <p class="error-text small" data-preview-error role="alert" hidden></p><div class="wizard-actions"><button type="button" class="button plain" data-wizard="back">← Категория</button><button type="button" class="button" data-wizard="preview">Предпросмотр →</button></div></fieldset>
+      <fieldset data-editor-step="3" hidden><legend>Проверь объявление</legend><div data-listing-preview></div><div class="wizard-actions"><button type="button" class="button plain" data-wizard="back">← Редактировать</button><button class="button" type="submit">${l?.status === "completed" ? "Сохранить изменения" : "Отправить на проверку"}</button></div></fieldset>
+      <div class="editor-footer"><button class="button secondary" type="submit" name="save_mode" value="draft" formnovalidate>Сохранить в архив</button><a class="small muted" href="#/mine?status=archived">Закрыть</a></div>
+    </form>`,
     seq,
   );
   state.editor = {
@@ -373,6 +413,11 @@ async function formView(id, seq) {
     editorStatus("Черновик сохраняется автоматически в архив.");
   }
   renderPhotos();
+  if (globalThis.DormHubWizard) DormHubWizard.init(state.editor.form, {
+    preview: () => listingPreview(state.editor.form),
+    changed: () => { captureEditor(); scheduleAutosave(); },
+    initial: v.category && (l || recover) ? 2 : 1,
+  });
 }
 
 function renderPhotos() {
@@ -655,6 +700,7 @@ async function adminView(params, seq) {
   let content = "";
   const tabs = `<nav class="tabs">${[
     ["listings", "Объявления"],
+    ["categories", "Категории"],
     ["reports", "Жалобы"],
     ["users", "Пользователи"],
     ["dorms", "Общежития"],
@@ -669,6 +715,9 @@ async function adminView(params, seq) {
   if (tab === "listings") {
     const page = await api("/admin/listings?offset=" + offset);
     content = `<p class="muted">Открой объявление, проверь текст, фотографии и контакты. Одобрение публикует текущую версию; отказ возвращает её в архив автора.</p>${page.items.length ? `<div class="cards">${page.items.map((l) => card(l, "moderation")).join("")}</div>${pager(page, params, "admin")}` : empty("Очередь пуста", "Новые объявления появятся здесь после отправки на проверку.")}`;
+  } else if (tab === "categories") {
+    const page = await api("/admin/listings?category_review=true&offset=" + offset);
+    content = page.items.length ? `<div class="category-review-note small">Распредели объявления по новым категориям.</div><div class="cards">${page.items.map(l=>card(l,"moderation")).join("")}</div>${pager(page,params,"admin")}` : empty("Всё распределено", "Категорию любого объявления можно изменить в его карточке.");
   } else if (tab === "reports") {
     const status = params.get("status") || "new",
       items = await api(
@@ -682,7 +731,7 @@ async function adminView(params, seq) {
     const items = await api("/admin/users?offset=" + offset);
     content = `<div class="panel table-wrap"><table><thead><tr><th>Пользователь</th><th>Состояние</th><th>Регистрация</th><th>Действия</th></tr></thead><tbody>${items.map((u) => `<tr><td><strong>${h(u.nickname)}</strong><div class="small muted" style="white-space:normal;overflow-wrap:anywhere">${h(u.email)}</div><div class="small muted">№${u.id}${u.is_admin ? " · администратор" : ""}</div></td><td><span class="pill ${u.blocked ? "red" : u.active ? "" : "gray"}">${u.blocked ? "Заблокирован" : u.active ? "Активен" : "Деактивирован"}</span></td><td>${h(date(u.created_at))}</td><td><div class="account-actions">${!u.is_admin && u.id !== state.me.id ? `<button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="${u.blocked ? "unblock" : "block"}">${u.blocked ? "Разблокировать" : "Заблокировать"}</button><button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="delete">Удалить</button>` : "—"}</div></td></tr>`).join("")}</tbody></table></div>${adminPager(items.length, offset, params)}`;
   } else if (tab === "dorms") {
-    content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Район</span><select name="location" required>${options(state.catalog.locations.filter(l => l.code !== "EXTERNAL"), "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(d.name)}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
+    content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Местоположение</span><select name="location" required>${options(state.catalog.locations.filter(l => l.code !== "EXTERNAL"), "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(dormCaption(d))}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
   } else if (tab === "logs") {
     content = logPanel();
   } else if (tab === "site") {
@@ -710,6 +759,7 @@ function adminPager(count, offset, params) {
   return `<div class="pagination">${offset ? `<a class="button plain" href="#/admin?${h(p.toString())}">← Назад</a>` : ""}${count === 50 ? `<a class="button plain" href="#/admin?${h(n.toString())}">Далее →</a>` : ""}</div>`;
 }
 async function route() {
+  document.querySelectorAll("[data-showcase-rail]").forEach(rail => state.railOffsets.set(state.showcaseKey+":"+rail.dataset.showcaseRail,rail.scrollLeft));
   stopLogViewer();
   if (state.maintenance) return maintenanceView();
   const generation = ++routeGeneration;
@@ -753,7 +803,7 @@ async function route() {
     else if (parts[0] === "listing") await detailView(parts[1], seq);
     else if (parts[0] === "profile") await profileView(parts[1], params, seq);
     else if (parts[0] === "settings") settingsView(seq);
-    else if (parts[0] === "new") await formView(null, seq);
+    else if (parts[0] === "new") await formView(null, seq, params);
     else if (parts[0] === "edit") await formView(parts[1], seq);
     else if (parts[0] === "admin") {
       if (!state.me.is_admin) throw new Error("Недостаточно прав");
@@ -890,38 +940,7 @@ async function saveListing(form, data, mode = "submit") {
   const seq = state.seq,
     previous = state.formListing,
     pending = state.pending;
-  let amount = null;
-  if (data.get("price_mode") === "price" && data.get("price")) {
-    try {
-      amount = minor(data.get("price"));
-    } catch (e) {
-      if (mode === "submit") throw e;
-    }
-  }
-  if (
-    mode === "submit" &&
-    data.get("price_mode") === "price" &&
-    amount === null
-  )
-    throw new Error("Укажи цену или выбери другой вариант стоимости");
-  const input = {
-    draft: true,
-    revision: previous?.revision || 0,
-    has_photos: pending.length > 0,
-    kind: data.get("kind"),
-    category: data.get("category"),
-    title: data.get("title"),
-    description: data.get("description"),
-    location: data.get("location"),
-    address: data.get("location") === "EXTERNAL" ? data.get("address") || "" : "",
-    dorm_id: data.get("location") !== "EXTERNAL" && data.get("dorm_id") ? Number(data.get("dorm_id")) : null,
-    price_mode: data.get("price_mode"),
-    price_minor: amount,
-    telegram: data.get("telegram"),
-    vk: data.get("vk"),
-  };
-  if (input.price_mode === "price" && input.price_minor === null)
-    input.price_mode = "unset";
+  const input = {...listingFields(data, mode === "submit"), revision: previous?.revision || 0, has_photos: pending.length > 0};
   // Older browser backups may contain a rejected empty creation. Such a
   // request cannot have created a listing, so it must not replace new edits.
   if (
@@ -1222,6 +1241,9 @@ document.addEventListener("submit", async (event) => {
           ? "Аккаунт удалён. Очистка файлов завершится автоматически."
           : "Аккаунт и связанные данные удалены",
       );
+    } else if (form.id === "category-form") {
+      await api("/admin/listings/" + form.dataset.id + "/category", {method:"PUT", body:{category:data.get("category"),revision:Number(form.dataset.revision)}});
+      closeDialog(); toast("Категория изменена"); await route();
     } else if (form.id === "review-form") {
       await api("/admin/listings/" + form.dataset.id + "/review", {
         method: "POST",
@@ -1270,7 +1292,10 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("change", (event) => {
   const el = event.target;
   if (el.closest("form")?.dataset.busy) return;
-  if (el.id === "photo-input") {
+  if (el.name === "place") {
+    const form = el.closest("form"), external = el.value === "EXTERNAL", address = form?.querySelector('[name="address"]');
+    if (address) { form.querySelector("#address-field").hidden = !external; address.disabled = !external; if (!external) address.value = ""; }
+  } else if (el.id === "photo-input") {
     queuePhotos(el.files);
     el.value = "";
   } else if (el.name === "location") {
@@ -1303,7 +1328,10 @@ document.addEventListener("click", async (event) => {
   if (button.disabled || button.closest("form")?.dataset.busy) return;
   const { action, id, kind, transition, value, photo, index } = button.dataset;
   try {
-    if (action === "menu") {
+    if (action === "rail-scroll") {
+      const rail = document.getElementById("rail-" + button.dataset.rail);
+      if (rail) rail.scrollBy({left: Number(button.dataset.direction) * Math.max(200, rail.clientWidth * .8), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+    } else if (action === "menu") {
       const side = document.querySelector(".sidebar");
       side.classList.toggle("open");
       document.querySelector(".layout")?.classList.toggle("menu-open", side.classList.contains("open"));
@@ -1397,6 +1425,8 @@ document.addEventListener("click", async (event) => {
       state.deletionResendAt = Date.now() + 60000;
       tick();
       toast("Новый код удаления отправлен");
+    } else if (action === "change-category" && state.me.is_admin) {
+      modal("Категория", `<form id="category-form" data-id="${h(id)}" data-revision="${h(button.dataset.revision)}"><label class="field"><span>Категория</span><select name="category" required>${options(state.catalog.categories,button.dataset.category)}</select></label><button class="button" type="submit">Сохранить</button></form>`);
     } else if (action === "review-approve" || action === "review-reject") {
       const decision = action === "review-approve" ? "approve" : "reject";
       modal(
@@ -1547,27 +1577,7 @@ function captureEditor(form = state.editor?.form, baseline = false) {
   if (!editor || editor.closing || !form || form.dataset.busy) return;
   const data = new FormData(form),
     raw = Object.fromEntries(data);
-  let value = null;
-  try {
-    value = raw.price_mode === "price" && raw.price ? minor(raw.price) : null;
-  } catch {}
-  const input = {
-    draft: true,
-    kind: raw.kind || "offer",
-    category: raw.category || "",
-    title: raw.title || "",
-    description: raw.description || "",
-    location: raw.location || "",
-    address: raw.location === "EXTERNAL" ? raw.address || "" : "",
-    dorm_id: raw.location !== "EXTERNAL" && raw.dorm_id ? Number(raw.dorm_id) : null,
-    price_mode:
-      raw.price_mode === "price" && value === null
-        ? "unset"
-        : raw.price_mode || "unset",
-    price_minor: value,
-    telegram: raw.telegram || "",
-    vk: raw.vk || "",
-  };
+  const input = listingFields(data);
   const fingerprint = JSON.stringify({
     input,
     raw_price: raw.price || "",
@@ -1619,7 +1629,7 @@ function storeEditor(editor) {
 }
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
-  if (state.maintenance || state.cropSession || !state.editor || state.editor.closing) return;
+  if (state.maintenance || state.cropSession || !state.editor || state.editor.closing || state.editor.form?.dataset.step === "3") return;
   autosaveTimer = setTimeout(
     () =>
       autosave().catch((e) =>

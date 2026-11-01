@@ -50,7 +50,7 @@ func TestExternalLocationAddressLifecycle(t *testing.T) {
 	}
 	found := false
 	for _, loc := range catalog.Locations {
-		if loc.Code == "EXTERNAL" && loc.Name == "Не УНК университета" {
+		if loc.Code == "EXTERNAL" && loc.Name == "Другой адрес" {
 			found = true
 		}
 	}
