@@ -70,7 +70,7 @@ services:
     image: getmeili/meilisearch:v1.55.0
     environment:
       MEILI_ENV: production
-      MEILI_MASTER_${MEILI_MASTER_KEY:?Generate a Meilisearch master key}: ${MEILI_MASTER_KEY:?Generate a Meilisearch master key}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Generate a Meilisearch master key}
       MEILI_NO_ANALYTICS: "true"
       MEILI_MAX_INDEXING_MEMORY: 128MiB
       MEILI_MAX_INDEXING_THREADS: "1"
