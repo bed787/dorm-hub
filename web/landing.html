@@ -10,6 +10,7 @@
         <p class="public-lead">Dorm Hub — студенческая доска объявлений {{.Campus}}. Продажа и обмен вещей, учебные материалы, услуги и помощь в общежитии.</p>
         <div class="public-actions"><a class="button" href="{{if .Authenticated}}/app#/feed{{else}}/login{{end}}">{{if .Authenticated}}Открыть объявления{{else}}Войти по почте{{end}} <span aria-hidden="true">↗</span></a><a class="public-text-link" href="#how">Как это работает ↓</a></div>
         <p class="public-caption">{{if .Authenticated}}Размещение объявлений бесплатно.{{else}}Без пароля и платы за размещение. Объявления и контакты доступны после входа.{{end}}</p>
+        <p class="public-caption"><a class="public-text-link" href="https://t.me/dorm_hub_spbu" target="_blank" rel="noopener noreferrer">Канал Dorm Hub в Telegram <span aria-hidden="true">↗</span></a></p>
       </div>
       <aside class="public-board" aria-label="Что можно найти на площадке">
         <div class="public-board-heading"><span>Категории объявлений</span><span aria-hidden="true">↗</span></div>

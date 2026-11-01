@@ -8,9 +8,10 @@ import (
 	"dorm-hub/internal/users"
 	"encoding/json"
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) saveCode(ctx context.Context, email, digest string, acceptance []byte) error {
@@ -58,8 +59,6 @@ func (s *Service) Verify(ctx context.Context, email, code string, reactivate boo
 		return "", Session{}, err
 	}
 	defer tx.Rollback(context.Background())
-	// Account deletion locks the user before deleting login codes. Use the same
-	// order here to avoid a user-row/login-code deadlock during concurrent login.
 	var existing int64
 	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email=$1 FOR UPDATE`, email).Scan(&existing)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -97,8 +96,7 @@ func (s *Service) Verify(ctx context.Context, email, code string, reactivate boo
 	if len(requireAcceptance) > 0 && requireAcceptance[0] && !acceptance.valid() {
 		return "", Session{}, domain.Invalid("Запросите новый код, подтвердив согласие и правила")
 	}
-	// A unique email makes concurrent first registrations safe. Temporary nickname
-	// is replaced by the permanent ID nickname before the transaction commits.
+
 	seed, err := Token()
 	if err != nil {
 		return "", Session{}, err

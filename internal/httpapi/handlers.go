@@ -55,8 +55,7 @@ func (a *API) requestLoginCode(w http.ResponseWriter, r *http.Request, adminOnly
 	if allowed, err := a.allowMaintenanceLogin(w, r, in.Email); err != nil || !allowed {
 		return err
 	}
-	// Administrator recovery is restricted to configured/existing administrators.
-	// It is not the public account registration flow and records no fake consent.
+
 	if adminOnly {
 		if err := a.auth.Request(r.Context(), in.Email); err != nil {
 			return err
