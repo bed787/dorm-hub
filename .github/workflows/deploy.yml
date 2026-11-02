@@ -61,6 +61,9 @@ jobs:
       - name: Test frontend
         run: node --test tests/*.test.cjs
 
+      - name: Validate monitoring configuration
+        run: bash deploy/monitoring/check.sh
+
       - name: Test application with PostgreSQL
         run: |
           docker run --rm --network host \

@@ -262,9 +262,9 @@ async function detailView(id, seq) {
   const own = l.author_id === state.me.id;
   const contacts = [
     l.telegram &&
-      `<a class="button" target="_blank" rel="noopener noreferrer" href="${h(l.telegram)}">Написать в Telegram ↗</a>`,
+      `<a class="button" target="_blank" rel="noopener noreferrer" data-contact-event="telegram" data-listing-id="${l.id}" href="${h(l.telegram)}">Написать в Telegram ↗</a>`,
     l.vk &&
-      `<a class="button secondary" target="_blank" rel="noopener noreferrer" href="${h(l.vk)}">Написать в VK ↗</a>`,
+      `<a class="button secondary" target="_blank" rel="noopener noreferrer" data-contact-event="vk" data-listing-id="${l.id}" href="${h(l.vk)}">Написать в VK ↗</a>`,
   ]
     .filter(Boolean)
     .join("");
@@ -706,6 +706,7 @@ async function adminView(params, seq) {
     ["dorms", "Общежития"],
     ["site", "Доступ к сайту"],
     ["logs", "Логи"],
+    ["analytics", "Статистика"],
   ]
     .map(
       ([v, n]) =>
@@ -732,6 +733,9 @@ async function adminView(params, seq) {
     content = `<div class="panel table-wrap"><table><thead><tr><th>Пользователь</th><th>Состояние</th><th>Регистрация</th><th>Действия</th></tr></thead><tbody>${items.map((u) => `<tr><td><strong>${h(u.nickname)}</strong><div class="small muted" style="white-space:normal;overflow-wrap:anywhere">${h(u.email)}</div><div class="small muted">№${u.id}${u.is_admin ? " · администратор" : ""}</div></td><td><span class="pill ${u.blocked ? "red" : u.active ? "" : "gray"}">${u.blocked ? "Заблокирован" : u.active ? "Активен" : "Деактивирован"}</span></td><td>${h(date(u.created_at))}</td><td><div class="account-actions">${!u.is_admin && u.id !== state.me.id ? `<button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="${u.blocked ? "unblock" : "block"}">${u.blocked ? "Разблокировать" : "Заблокировать"}</button><button data-action="moderate" data-kind="user" data-id="${u.id}" data-transition="delete">Удалить</button>` : "—"}</div></td></tr>`).join("")}</tbody></table></div>${adminPager(items.length, offset, params)}`;
   } else if (tab === "dorms") {
     content = `<div class="panel"><h2>Справочник общежитий</h2><form id="dorm-form" class="form-grid"><label class="field"><span>Местоположение</span><select name="location" required>${options(state.catalog.locations.filter(l => l.code !== "EXTERNAL"), "")}</select></label><label class="field"><span>Название</span><input name="name" maxlength="100" required placeholder="Название или номер общежития"></label><div class="full"><button class="button" type="submit">Добавить общежитие</button></div></form><div class="table-wrap" style="margin-top:25px"><table><tbody>${state.catalog.dorms.map((d) => `<tr><td>${h(locationNames[d.location] || d.location)}</td><td>${h(dormCaption(d))}</td><td><button class="small muted" data-action="delete-dorm" data-id="${d.id}">Удалить</button></td></tr>`).join("") || '<tr><td class="muted">Справочник пока пуст. Добавьте утверждённые общежития.</td></tr>'}</tbody></table></div></div>`;
+  } else if (tab === "analytics") {
+    const data = await api("/admin/analytics?days=" + encodeURIComponent(params.get("days") || "7") + "&offset=" + offset);
+    content = DormHubAnalytics.render(data,state.catalog.categories);
   } else if (tab === "logs") {
     content = logPanel();
   } else if (tab === "site") {
@@ -1322,6 +1326,10 @@ document.addEventListener("change", (event) => {
   }
 });
 document.addEventListener("click", async (event) => {
+  const contact = event.target.closest("a[data-contact-event]");
+  if (contact?.dataset.contactEvent && state.me && !state.me.is_admin) {
+    void api("/analytics/events", {method:"POST",body:{listing_id:Number(contact.dataset.listingId),event:contact.dataset.contactEvent}}).catch(() => {});
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   event.preventDefault();

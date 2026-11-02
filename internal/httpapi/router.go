@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/hmac"
+	"dorm-hub/internal/analytics"
 	"dorm-hub/internal/auth"
 	"dorm-hub/internal/config"
 	"dorm-hub/internal/domain"
@@ -13,6 +14,7 @@ import (
 	"dorm-hub/internal/media"
 	"dorm-hub/internal/moderation"
 	"dorm-hub/internal/platform/logview"
+	"dorm-hub/internal/platform/telemetry"
 	"dorm-hub/internal/stars"
 	"dorm-hub/internal/users"
 	"dorm-hub/web"
@@ -28,6 +30,8 @@ import (
 )
 
 type API struct {
+	analytics  *analytics.Service
+	metrics    *telemetry.Metrics
 	cfg        config.Config
 	logger     *slog.Logger
 	logs       *logview.Buffer
@@ -44,6 +48,10 @@ type API struct {
 }
 
 func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.Service, profiles *users.Service, ads *listings.Service, catalog *locations.Service, fav *favorites.Service, ratings *stars.Service, mod *moderation.Service, photos *media.Service, logBuffers ...*logview.Buffer) http.Handler {
+	return NewWithMetrics(cfg, logger, db, login, profiles, ads, catalog, fav, ratings, mod, photos, telemetry.New(), logBuffers...)
+}
+
+func NewWithMetrics(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.Service, profiles *users.Service, ads *listings.Service, catalog *locations.Service, fav *favorites.Service, ratings *stars.Service, mod *moderation.Service, photos *media.Service, metrics *telemetry.Metrics, logBuffers ...*logview.Buffer) http.Handler {
 	var logs *logview.Buffer
 	if len(logBuffers) > 0 {
 		logs = logBuffers[0]
@@ -53,7 +61,10 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 		logger = slog.New(logview.NewHandler(logger.Handler(), logs))
 	}
 	a := &API{cfg: cfg, logger: logger, logs: logs, db: db, auth: login, users: profiles, listings: ads, locations: catalog, favorites: fav, stars: ratings, moderation: mod, media: photos, limiter: &limiter{items: map[string]bucket{}}}
+	a.analytics = analytics.New(db)
 	mux := http.NewServeMux()
+	mux.Handle("/monitoring/", a.monitoringProxy())
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
@@ -82,6 +93,8 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("DELETE /api/me", true, false, a.deleteAccount)
 	route("GET /api/statistics", true, false, a.statistics)
 	route("GET /api/admin/logs", true, true, a.applicationLogs)
+	route("GET /api/admin/analytics", true, true, a.analyticsSummary)
+	route("POST /api/analytics/events", true, false, a.analyticsEvent)
 	route("GET /api/admin/site-settings", true, true, a.siteSettings)
 	route("PUT /api/admin/site-settings", true, true, a.updateSiteSettings)
 	route("GET /api/admin/listings", true, true, a.reviewQueue)
@@ -114,7 +127,11 @@ func New(cfg config.Config, logger *slog.Logger, db *pgxpool.Pool, login *auth.S
 	route("DELETE /api/admin/dorms/{id}", true, true, a.deleteDorm)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { a.fail(w, r, domain.ErrNotFound) })
 	mux.Handle("/", a.pages(web.HandlerFor(cfg.BaseURL)))
-	return middleware.Wrap(a.maintenanceGate(mux), logger, cfg.Env == "production" && cfg.SecureCookies)
+	if metrics == nil {
+		metrics = telemetry.New()
+	}
+	a.metrics = metrics
+	return middleware.Wrap(a.maintenanceGate(mux), logger, cfg.Env == "production" && cfg.SecureCookies, metrics)
 }
 
 type endpoint func(http.ResponseWriter, *http.Request, auth.Session) error
@@ -165,6 +182,8 @@ func (a *API) wrap(required, admin bool, h endpoint) http.Handler {
 		}
 		if err := h(w, r, session); err != nil {
 			a.fail(w, r, err)
+		} else if required && !session.User.IsAdmin && r.Method != http.MethodHead && meaningfulActivity(r.Pattern) {
+			a.recordActivity(r.Context(), session.User.ID)
 		}
 	})
 }
@@ -276,6 +295,8 @@ func (a *API) allowMutation(r *http.Request, user int64) bool {
 	var name string
 	var limit int
 	switch r.Pattern {
+	case "POST /api/analytics/events":
+		name, limit = "analytics", 120
 	case "POST /api/listings":
 		name, limit = "listing", 30
 	case "POST /api/listings/{id}/photos", "PUT /api/listings/{id}/photos/{photo}":

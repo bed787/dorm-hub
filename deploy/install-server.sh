@@ -25,6 +25,9 @@ if [[ ${1:-} == --search ]]; then
   docker image inspect "$image" >/dev/null
   compose=(docker compose --project-name dorm-hub --project-directory /opt/dorm-hub
     --env-file /opt/dorm-hub/.env.production -f /etc/dorm-hub/compose.registry.yaml)
+  if [[ -f /etc/dorm-hub/compose.monitoring.yaml ]]; then
+    compose+=(-f /etc/dorm-hub/compose.monitoring.yaml)
+  fi
   APP_IMAGE="$image" docker compose --project-name dorm-hub --project-directory /opt/dorm-hub \
     --env-file /opt/dorm-hub/.env.production -f "$source_dir/compose.registry.yaml" config --quiet
   previous=$(mktemp /etc/dorm-hub/compose.before-search.XXXXXX)

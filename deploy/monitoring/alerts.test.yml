@@ -1,0 +1,27 @@
+rule_files: [alerts.yml]
+evaluation_interval: 30s
+tests:
+  - interval: 30s
+    input_series:
+      - series: 'up{job="dorm-hub"}'
+        values: '0x8'
+      - series: 'dormhub_smtp_messages_total{purpose="login",result="error"}'
+        values: '0 1 1 1 1 1 1 1 1'
+      - series: 'dormhub_http_requests_total{route="unmatched",status="503"}'
+        values: '0 5 10 15 20 25 30 35 40'
+      - series: dormhub_maintenance_enabled
+        values: '1x8'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ApplicationUnavailable
+        exp_alerts:
+          - exp_labels: {job: dorm-hub, severity: critical}
+            exp_annotations: {summary: "Приложение недоступно для мониторинга"}
+      - eval_time: 2m
+        alertname: SMTPFailures
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: "Не удалось отправить письмо с кодом"}
+      - eval_time: 2m
+        alertname: ServerErrors
+        exp_alerts: []

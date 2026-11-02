@@ -1,0 +1,112 @@
+name: dorm-hub-monitoring
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+      - --query.max-concurrency=2
+      - --query.timeout=10s
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus:/prometheus
+    mem_limit: 512m
+    cpu_shares: 256
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, wget, -q, --spider, "http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "2"}
+  grafana:
+    image: grafana/grafana:13.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set Grafana password}
+      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY:?Set Grafana secret}
+      GF_SERVER_ROOT_URL: ${MONITORING_PUBLIC_URL:?Set public origin}/monitoring/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_PROXY_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-true}
+      GF_SECURITY_COOKIE_SAMESITE: lax
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      GF_LIVE_MAX_CONNECTIONS: "0"
+      GF_LOG_LEVEL: warn
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/dorm-hub.json
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      default:
+        aliases: [dorm-hub-grafana]
+    mem_limit: 512m
+    cpu_shares: 256
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, wget, -q, --spider, "http://127.0.0.1:3000/monitoring/api/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "2"}
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    user: "65534:65534"
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --collector.filesystem
+      - --collector.loadavg
+      - --collector.time
+      - --collector.uname
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|tmpfs)$
+    volumes:
+      - /:/host:ro,rslave
+    mem_limit: 64m
+    cpu_shares: 128
+    pids_limit: 64
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "2"}
+volumes:
+  prometheus:
+  grafana:

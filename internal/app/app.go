@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"dorm-hub/internal/analytics"
 	"dorm-hub/internal/auth"
 	"dorm-hub/internal/config"
 	"dorm-hub/internal/favorites"
@@ -15,6 +16,7 @@ import (
 	"dorm-hub/internal/platform/mail"
 	"dorm-hub/internal/platform/postgres"
 	"dorm-hub/internal/platform/search"
+	"dorm-hub/internal/platform/telemetry"
 	"dorm-hub/internal/stars"
 	"dorm-hub/internal/users"
 	"dorm-hub/migrations"
@@ -28,6 +30,8 @@ import (
 )
 
 type App struct {
+	metricsServer   *http.Server
+	analytics       *analytics.Service
 	searchSync      *listings.SearchSync
 	server          *http.Server
 	logger          *slog.Logger
@@ -66,7 +70,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	if err = photos.FlushDeletions(ctx); err != nil {
 		return nil, fmt.Errorf("clean deleted files: %w", err)
 	}
-	login := auth.New(db, cfg, mail.New(cfg))
+	metrics := telemetry.New()
+	metrics.Database(db)
+	login := auth.New(db, cfg, metrics.Mail(mail.New(cfg)))
 	ads := listings.New(db)
 	var searchSync *listings.SearchSync
 	if cfg.MeiliURL != "" {
@@ -77,10 +83,32 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		ads = listings.NewWithSearch(db, engine)
 		searchSync = listings.NewSearchSync(db, engine, logger)
 	}
-	handler := httpapi.New(cfg, logger, db, login, users.New(db), ads, locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, logs)
+	handler := httpapi.NewWithMetrics(cfg, logger, db, login, users.New(db), ads, locations.New(db), favorites.New(db), stars.New(db), moderation.New(db), photos, metrics, logs)
+	var metricsServer *http.Server
+	if cfg.MetricsAddr != "" {
+		mux := http.NewServeMux()
+		scrape := metrics.Handler()
+		mux.Handle("GET /metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+			defer cancel()
+			var maintenance bool
+			if db.QueryRow(ctx, `SELECT maintenance FROM site_settings WHERE singleton`).Scan(&maintenance) == nil {
+				if maintenance {
+					metrics.Maintenance.Set(1)
+				} else {
+					metrics.Maintenance.Set(0)
+				}
+				metrics.DatabaseUp.Set(1)
+			} else {
+				metrics.DatabaseUp.Set(0)
+			}
+			scrape.ServeHTTP(w, r)
+		}))
+		metricsServer = &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+	}
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler, ReadHeaderTimeout: cfg.ReadHeaderTimeout, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 * 1024, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
 	ok = true
-	return &App{searchSync: searchSync, server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos, login: login}, nil
+	return &App{metricsServer: metricsServer, analytics: analytics.New(db), searchSync: searchSync, server: server, logger: logger, shutdownTimeout: cfg.ShutdownTimeout, db: db, photos: photos, login: login}, nil
 }
 func (a *App) Run(ctx context.Context) error {
 	defer a.db.Close()
@@ -108,6 +136,9 @@ func (a *App) Run(ctx context.Context) error {
 				if err := a.photos.FlushDeletions(passCtx); err != nil {
 					a.logger.Error("file cleanup retry failed")
 				}
+				if err := a.analytics.Prune(passCtx); err != nil {
+					a.logger.Warn("analytics cleanup failed")
+				}
 				cancel()
 			}
 		}
@@ -118,7 +149,16 @@ func (a *App) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	serveErrors := make(chan error, 1)
+	serveErrors := make(chan error, 2)
+	if a.metricsServer != nil {
+		metricsListener, err := net.Listen("tcp", a.metricsServer.Addr)
+		if err != nil {
+			_ = listener.Close()
+			return fmt.Errorf("metrics listen: %w", err)
+		}
+		defer a.metricsServer.Close()
+		go func() { serveErrors <- a.metricsServer.Serve(metricsListener) }()
+	}
 	go func() { serveErrors <- a.server.Serve(listener) }()
 	a.logger.Info("Dorm Hub started", "address", listener.Addr().String())
 	select {
@@ -134,6 +174,9 @@ func (a *App) Run(ctx context.Context) error {
 		_ = a.server.Close()
 		<-serveErrors
 		return fmt.Errorf("shutdown: %w", err)
+	}
+	if a.metricsServer != nil {
+		_ = a.metricsServer.Shutdown(shutdownCtx)
 	}
 	return serverError(<-serveErrors)
 }

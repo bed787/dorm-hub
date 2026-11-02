@@ -215,6 +215,9 @@ func (a *API) getListing(w http.ResponseWriter, r *http.Request, s auth.Session)
 		return err
 	}
 	respond(w, 200, l)
+	if !s.User.IsAdmin && r.Method == http.MethodGet {
+		a.recordView(r.Context(), s.User.ID, l.ID)
+	}
 	return nil
 }
 func (a *API) showcase(w http.ResponseWriter, r *http.Request, s auth.Session) error {

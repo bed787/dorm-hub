@@ -1,0 +1,1493 @@
+{
+  "uid": "dorm-hub-http",
+  "title": "Dorm Hub — API",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "Europe/Moscow",
+  "refresh": "30s",
+  "tags": [
+    "dorm-hub",
+    "http"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Запросы за период",
+      "description": "Оценка прироста счётчика за выбранный период; учитывает перезапуски приложения.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Среднее время ответа",
+      "description": "",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum(sum by (route,method) (increase(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))) / sum(sum by (route,method) (increase(dormhub_http_request_duration_seconds_count{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "p95 времени ответа",
+      "description": "Примерно 95% выбранных запросов завершились быстрее этого времени. Оценка по гистограмме.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Ошибки 4xx + 5xx",
+      "description": "Клиентские 4xx и серверные 5xx вместе. Подробная разбивка приведена ниже.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"[45]..\"}[$__range]))) or on(route,method) (0 * (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Среднее время по ручкам",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (label_join(label_replace((1000 * (sum by (route,method) (rate(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval]))) / (sum by (route,method) (rate(dormhub_http_request_duration_seconds_count{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "p95 по ручкам",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (label_join(label_replace((1000 * histogram_quantile(0.95, sum by (route,method,le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Запросы в секунду по ручкам",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (label_join(label_replace((sum by (route,method) (rate(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Количество запросов по интервалам",
+      "description": "Прирост за скользящее окно $__rate_interval, а не накопительный итог со старта приложения.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Доля запросов по ручкам",
+      "description": "Десять наибольших значений в выбранном периоде. Время обработки включает ожидание БД/SMTP и не равно времени CPU.",
+      "type": "piechart",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(topk(10,sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\")))) or (label_replace(clamp_min(sum(sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))) - sum(topk(10,sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\")))),0), \"endpoint\", \"Остальные\", \"__name__\", \".*\"))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Доля общего времени обработки",
+      "description": "Десять наибольших значений в выбранном периоде. Время обработки включает ожидание БД/SMTP и не равно времени CPU.",
+      "type": "piechart",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(topk(10,sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\")))) or (label_replace(clamp_min(sum(sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))) - sum(topk(10,sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\")))),0), \"endpoint\", \"Остальные\", \"__name__\", \".*\"))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Статистика по ручкам",
+      "description": "Одна строка — HTTP-метод и шаблон маршрута. Клик по заголовку сортирует таблицу. Выбор ручки в фильтре сверху меняет все графики.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "label_replace((sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"Запросы\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace(((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"2..\"}[$__range]))) or on(route,method) (0 * (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"2xx\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace(((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"3..\"}[$__range]))) or on(route,method) (0 * (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"3xx\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace(((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"4..\"}[$__range]))) or on(route,method) (0 * (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"4xx\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace(((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"5..\"}[$__range]))) or on(route,method) (0 * (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"5xx\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"Общее время\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace((1000 * (sum by (route,method) (increase(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))) / (sum by (route,method) (increase(dormhub_http_request_duration_seconds_count{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"Среднее, мс\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace((1000 * histogram_quantile(0.5, sum by (route,method,le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"p50, мс\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace((1000 * histogram_quantile(0.95, sum by (route,method,le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"p95, мс\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace((1000 * histogram_quantile(0.99, sum by (route,method,le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"p99, мс\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace((100 * ((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"[45]..\"}[$__range]))) or on(route,method) (0 * (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))))) / (sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range])))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"Ошибки, %\", \"__name__\", \".*\") or label_replace((sum by (endpoint) (label_join(label_replace(((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__range]))) / $__range_s), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))), \"measure\", \"Запросы/с\", \"__name__\", \".*\")",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Запросы"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "3xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Общее время"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Среднее, мс"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p50, мс"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95, мс"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p99, мс"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ошибки, %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Запросы/с"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Запросы",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "measure",
+            "rowField": "endpoint",
+            "valueField": "Value",
+            "emptyValue": "null"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "endpoint\\measure": 0,
+              "Запросы": 1,
+              "2xx": 2,
+              "3xx": 3,
+              "4xx": 4,
+              "5xx": 5,
+              "Общее время": 6,
+              "Среднее, мс": 7,
+              "p50, мс": 8,
+              "p95, мс": 9,
+              "p99, мс": 10,
+              "Ошибки, %": 11,
+              "Запросы/с": 12
+            },
+            "renameByName": {
+              "endpoint\\measure": "Метод и ручка"
+            },
+            "excludeByName": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Ответы по HTTP-кодам",
+      "description": "Все коды отдельно: 200, 400, 401, 403, 404, 429, 500 и другие.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval]))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{status}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Ошибки 4xx по ручкам",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"4..\"}[$__rate_interval]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Ошибки 5xx по ручкам",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (label_join(label_replace((sum by (route,method) (increase(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\",status=~\"5..\"}[$__rate_interval]))), \"route\", \"$1\", \"route\", \"^[A-Z]+ (.*)$\"), \"endpoint\", \" \", \"method\", \"route\"))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "{{endpoint}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Среднее, p50, p95 и p99 выбранных запросов",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 49,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum(sum by (route,method) (rate(dormhub_http_request_duration_seconds_sum{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval]))) / sum(sum by (route,method) (rate(dormhub_http_request_duration_seconds_count{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval])))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "Среднее",
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "expr": "1000 * histogram_quantile(0.5, sum by (le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval])))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "p50",
+          "editorMode": "code"
+        },
+        {
+          "refId": "C",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval])))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "p95",
+          "editorMode": "code"
+        },
+        {
+          "refId": "D",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(dormhub_http_request_duration_seconds_bucket{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\",route=~\"${route:regex}\"}[$__rate_interval])))",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "legendFormat": "p99",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—"
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "scope",
+        "label": "Раздел",
+        "type": "custom",
+        "query": "API : (.* )?/api/.*, Все запросы : .*",
+        "current": {
+          "text": "API",
+          "value": "(.* )?/api/.*",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "API",
+            "value": "(.* )?/api/.*",
+            "selected": true
+          },
+          {
+            "text": "Все запросы",
+            "value": ".*",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "instance",
+        "label": "Приложение",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(dormhub_http_requests_total{job=\"dorm-hub\"}, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "definition": "label_values(dormhub_http_requests_total{job=\"dorm-hub\"}, instance)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "Все",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": []
+      },
+      {
+        "name": "method",
+        "label": "HTTP-метод",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",route=~\"${scope:raw}\"}, method)",
+          "refId": "StandardVariableQuery"
+        },
+        "definition": "label_values(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",route=~\"${scope:raw}\"}, method)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "Все",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": []
+      },
+      {
+        "name": "route",
+        "label": "Ручка",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\"}, route)",
+          "refId": "StandardVariableQuery"
+        },
+        "definition": "label_values(dormhub_http_requests_total{job=\"dorm-hub\",instance=~\"${instance:regex}\",method=~\"${method:regex}\",route=~\"${scope:raw}\"}, route)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "Все",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": []
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Сервер",
+      "type": "link",
+      "url": "/monitoring/d/dorm-hub/dorm-hub-server",
+      "targetBlank": false,
+      "keepTime": true
+    }
+  ]
+}

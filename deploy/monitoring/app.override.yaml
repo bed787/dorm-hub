@@ -1,0 +1,13 @@
+services:
+  app:
+    environment:
+      METRICS_ADDR: 0.0.0.0:9091
+      MONITORING_URL: http://dorm-hub-grafana:3000
+    networks:
+      default: {}
+      monitoring:
+        aliases: [dorm-hub-app]
+networks:
+  monitoring:
+    external: true
+    name: dorm-hub-monitoring_default

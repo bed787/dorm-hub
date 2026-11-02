@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	MetricsAddr, MonitoringURL                                                 string
 	MeiliURL, MeiliMasterKey                                                   string
 	Env, HTTPAddr, BaseURL, DatabaseURL, UploadDir, AuthSecret                 string
 	AllowedDomains, AllowedEmails, AdminEmails                                 []string
@@ -44,6 +45,21 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		return c, fmt.Errorf("BASE_URL: expected an HTTP(S) origin without a path")
 	}
 	c.SecureCookies = u.Scheme == "https"
+	c.MetricsAddr = strings.TrimSpace(get("METRICS_ADDR", ""))
+	if c.MetricsAddr != "" {
+		_, port, e := net.SplitHostPort(c.MetricsAddr)
+		n, numberErr := strconv.Atoi(port)
+		if e != nil || numberErr != nil || n < 1 || n > 65535 {
+			return c, fmt.Errorf("METRICS_ADDR: expected host:port")
+		}
+	}
+	c.MonitoringURL = strings.TrimRight(strings.TrimSpace(get("MONITORING_URL", "")), "/")
+	if c.MonitoringURL != "" {
+		endpoint, e := url.Parse(c.MonitoringURL)
+		if e != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+			return c, fmt.Errorf("MONITORING_URL: expected internal HTTP(S) origin")
+		}
+	}
 	c.MeiliURL = strings.TrimRight(strings.TrimSpace(get("MEILI_URL", "")), "/")
 	c.MeiliMasterKey = get("MEILI_MASTER_KEY", "")
 	if c.MeiliURL != "" {

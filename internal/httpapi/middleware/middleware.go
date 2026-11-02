@@ -28,7 +28,12 @@ func (r *recorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
-func Wrap(next http.Handler, logger *slog.Logger, secure bool) http.Handler {
+
+type Observer interface {
+	ObserveHTTP(string, string, int, time.Duration)
+}
+
+func Wrap(next http.Handler, logger *slog.Logger, secure bool, observers ...Observer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		idBytes := make([]byte, 12)
@@ -53,6 +58,9 @@ func Wrap(next http.Handler, logger *slog.Logger, secure bool) http.Handler {
 			status := response.status
 			if status == 0 {
 				status = 200
+			}
+			for _, observer := range observers {
+				observer.ObserveHTTP(r.Method, r.Pattern, status, time.Since(started))
 			}
 			// Successful viewer polling must not fill its own recent journal.
 			if r.URL.Path == "/api/admin/logs" && status == http.StatusOK {

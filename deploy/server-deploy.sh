@@ -35,6 +35,9 @@ state=/var/lib/dorm-hub-deploy
 mkdir -p "$state"
 compose=(docker compose --project-name dorm-hub --project-directory /opt/dorm-hub
   --env-file /opt/dorm-hub/.env.production -f /etc/dorm-hub/compose.registry.yaml)
+if [[ -f /etc/dorm-hub/compose.monitoring.yaml ]]; then
+  compose+=(-f /etc/dorm-hub/compose.monitoring.yaml)
+fi
 
 start_image() {
   APP_IMAGE="$1" "${compose[@]}" up -d --no-deps --no-build --pull never \
