@@ -40,7 +40,7 @@
         const page = await api("/admin/logs?" + query);
         if (!alive() || requestVersion !== version) return;
         output.innerHTML = rows(page.items);
-        status.textContent = `Показано ${page.items.length} из ${page.matched} совпадений. В буфере ${page.retained}/${page.capacity}. Обновлено ${new Date().toLocaleTimeString("ru-RU")}.`;
+        status.textContent = `Показано ${page.items.length} из ${page.matched} совпадений. Обновлено ${new Date().toLocaleTimeString("ru-RU")}.`;
       } catch (error) {
         if (!alive() || requestVersion !== version) return;
         status.textContent = "Не удалось загрузить логи: " + error.message;

@@ -1,6 +1,6 @@
 # Статистика и мониторинг Dorm Hub
 
-## Что появится
+## Панели
 
 **Модерация → Статистика**: активные пользователи за день, 7 и 30 дней, первые
 публикации, просмотры и переходы к контактам. Есть график по дням, таблица объявлений,
@@ -10,35 +10,6 @@
 `https://dorm-hub.ru/monitoring/`. Сначала нужна действующая админская сессия
 Dorm Hub, затем отдельный вход Grafana. Самостоятельный домен и изменения Caddy
 для этого не нужны.
-
-## Установка обновления на Mac
-
-Архив содержит только новые и изменённые файлы, с папкой `dorm-hub` внутри.
-Он устанавливается поверх версии с новыми категориями и SVG-иконками.
-
-```bash
-unzip -o ~/Downloads/dorm-hub-monitoring.zip -d ~/Desktop/projects &&
-cd ~/Desktop/projects/dorm-hub &&
-git add internal web deploy tests docs .github &&
-git add -f go.mod go.sum migrations/012_analytics.sql &&
-git commit -m "Add analytics and server monitoring" &&
-git -c http.version=HTTP/1.1 push origin main
-```
-
-Дождись успешного workflow **Deploy website**. Вкладка «Статистика» начнёт
-работать после обновления приложения. Контейнеры мониторинга устанавливаются
-один раз отдельным следующим шагом.
-
-Для проверки только на ноутбуке после распаковки достаточно:
-
-```bash
-cd ~/Desktop/projects/dorm-hub &&
-docker compose --env-file /dev/null -f compose.yaml up -d --build
-```
-
-Статистика доступна локальному администратору `admin@students.example`, письма —
-на http://localhost:8025. Для появления активности используй обычный аккаунт
-`student@students.example`. Сборщик ресурсов VPS устанавливается на Linux-сервере.
 
 ## Один раз на сервере
 
@@ -71,7 +42,7 @@ sed -n 's/^GRAFANA_ADMIN_PASSWORD=/Пароль Grafana: /p' /etc/dorm-hub-monit
 После входа откроется готовая панель. Её также можно найти через
 **Dashboards → Dorm Hub → Dorm Hub — сервер**.
 
-Последующие пуши используют установленную конфигурацию мониторинга автоматически.
+Автоматический деплой использует установленную конфигурацию мониторинга.
 Если меняются сами файлы `deploy/monitoring`, повтори установочный шаг с GitHub.
 
 ## Что считается
@@ -93,8 +64,8 @@ sed -n 's/^GRAFANA_ADMIN_PASSWORD=/Пароль Grafana: /p' /etc/dorm-hub-monit
   наличии записи об одобрении модератором.
 - Записи активности/переходов хранятся до 90 дней. Удаление аккаунта очищает его
   записи; удаление объявления очищает его просмотры и переходы. Поэтому история
-  может уменьшаться после удаления. Существующий общий обезличенный счётчик
-  успешных сделок сохраняет прежнее поведение.
+  может уменьшаться после удаления. Общий обезличенный счётчик
+  успешных сделок сохраняется после удаления аккаунта или объявления.
 
 ## Ресурсы и доступ
 
@@ -135,11 +106,13 @@ docker compose --project-name dorm-hub-monitoring --env-file /etc/dorm-hub-monit
 docker compose --project-name dorm-hub-monitoring --env-file /etc/dorm-hub-monitoring/secrets.env -f /etc/dorm-hub-monitoring/config/compose.yaml logs --tail=80
 ```
 
-Локальные проверки изменений: Node-тесты, Go-тесты, SQL-сценарии на PGlite,
-`go vet`, сборка, `govulncheck`, проверка правил Prometheus настоящим `promtool`.
-В workflow также добавлен Docker smoke test: конфигурация Prometheus, правила,
-запуск Grafana и загрузка подготовленного dashboard. Его результат нужно проверить
-в GitHub Actions: здесь Docker daemon и браузерный preview недоступны.
+В CI скрипт `deploy/monitoring/check.sh` проверяет конфигурацию Prometheus,
+правила и запуск Grafana с подготовленной панелью. Его можно запустить локально
+при наличии Docker:
+
+```bash
+bash deploy/monitoring/check.sh
+```
 
 ## Где находится код
 

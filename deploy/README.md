@@ -3,18 +3,11 @@
 После настройки: коммит и `git push` в main → GitHub запускает фронтенд-тесты и интеграционные проверки с отдельной PostgreSQL и govulncheck, затем собирает Docker-образ (Dockerfile также выполняет go vet и go test), публикует его в приватном GHCR и обновляет приложение на VPS.
 Разворачивается конкретный digest образа, а не изменяемый тег latest.
 
-## Установка: на Mac
+## Первичная настройка сервера
 
-Распакуйте архив непосредственно в папку проекта. В архиве только новые файлы:
-`.github/workflows/deploy.yml` и папка `deploy`. Исходники сайта не заменяются.
-
-```bash
-cd /Users/ruslan/Desktop/projects/dorm-hub
-unzip -o ~/Downloads/dorm-hub-autodeploy.zip -d .
-scp -r deploy root@157.228.138.75:/opt/dorm-hub/
-```
-
-## Установка: на сервере
+Установщик рассчитан на подготовленный VPS с Docker, Compose и
+`/opt/dorm-hub/.env.production`. Скопируй каталог `deploy` из репозитория
+в `/opt/dorm-hub/deploy`, затем выполни на сервере:
 
 ```bash
 bash /opt/dorm-hub/deploy/install-server.sh
@@ -25,14 +18,17 @@ bash /opt/dorm-hub/deploy/install-server.sh
 Обычный вход root по паролю не меняется. Контейнеры не перезапускаются.
 Если отдельный ключ github_actions_deploy уже создан, он используется повторно.
 
-## Доступ GitHub: на Mac
+## Доступ GitHub
 
-Эти команды передают ключ напрямую в секрет GitHub, не выводя его на экран.
-Первое SSH-подключение использует обычный пароль сервера. Второе использует уже сохранённый и проверенный ключ сервера из known_hosts на Mac; ssh-keyscan
-из GitHub Actions не используется.
+Нужны два секрета репозитория:
+
+- `DEPLOY_SSH_KEY` — приватный ключ `/root/.ssh/github_actions_deploy` на VPS.
+- `DEPLOY_KNOWN_HOSTS` — проверенная запись SSH-ключа сервера.
+
+Пример передачи через GitHub CLI с рабочего компьютера, где уже проверен
+SSH-ключ сервера:
 
 ```bash
-cd /Users/ruslan/Desktop/projects/dorm-hub
 set -o pipefail
 ssh root@157.228.138.75 'cat /root/.ssh/github_actions_deploy' | gh secret set DEPLOY_SSH_KEY --repo bed787/dorm-hub
 ssh-keygen -F 157.228.138.75 > /tmp/dorm-hub-known-hosts && gh secret set DEPLOY_KNOWN_HOSTS --repo bed787/dorm-hub < /tmp/dorm-hub-known-hosts
@@ -48,30 +44,6 @@ GitHub CLI может потребовать разрешение на загр�
 gh auth refresh --hostname github.com --scopes workflow
 ```
 
-## Первый запуск: на Mac
-
-```bash
-git add .github/workflows/deploy.yml deploy
-git commit -m "Build and deploy website with GitHub Actions"
-git push
-```
-
-Этот push уже запустит первую выкладку. Смотрите GitHub → Actions → Deploy
-website. Успех — зелёная отметка. При ошибке откройте красный шаг и его лог.
-Изменение не публикуется, если тесты или сборка не прошли.
-
-## Дальнейшая работа: на Mac
-
-```bash
-git add .
-git commit -m "Описание изменений"
-git push
-```
-
-GitHub запустит обновление только для main. В Actions есть и ручная кнопка Run
-workflow для повторного запуска. Одновременные выкладки выполняются по очереди;
-при серии push GitHub может заменить ожидающий запуск самым новым.
-
 ## Что происходит на сервере
 
 - Постоянная конфигурация: `/etc/dorm-hub/compose.registry.yaml`.
@@ -79,8 +51,8 @@ workflow для повторного запуска. Одновременные 
 - Состояние выкладки: `/var/lib/dorm-hub-deploy/`.
 - Обновляется только app. Используются существующие volumes
   `dorm-hub_postgres` и `dorm-hub_uploads`, порт приложения 127.0.0.1:8080
-  и порт БД 127.0.0.1:5432. Caddy и DBeaver продолжают работать.
-- Сервер скачивает готовый образ. git pull и сборка на VPS больше не нужны.
+  и порт БД 127.0.0.1:5432. Настройки обратного прокси не меняются.
+- Сервер скачивает готовый образ без сборки и обновления исходников на VPS.
   Файлы исходников в /opt/dorm-hub автоматически не обновляются.
 - Возможен короткий перерыв при замене app. После запуска проверяется /ready.
   Если проверка не прошла, скрипт пытается вернуть предыдущий образ приложения
@@ -98,9 +70,9 @@ workflow для повторного запуска. Одновременные 
 Это откат образа приложения, не базы данных. Миграции выполняются приложением
 при старте; изменение схемы может быть несовместимо со старым образом.
 Перед будущими изменениями схемы нужен отдельный backup БД и план миграции.
-Этот комплект не создаёт резервные копии базы и фотографий.
+Скрипты деплоя не создают резервные копии базы и фотографий.
 
-Для устойчивого отката также отмените ошибочный коммит на Mac через git revert
+Также отмените ошибочный коммит через `git revert`
 и отправьте исправление, иначе следующий push снова выложит тот же код.
 
 ## Изменения настроек развёртывания
@@ -111,34 +83,27 @@ Compose или server-deploy.sh, повторите scp папки deploy и з�
 до следующего push. Установщик не запускается автоматически из репозитория.
 Переменные окружения меняются отдельно на сервере в .env.production.
 
-После перехода для просмотра статуса можно выполнить на сервере:
+Статус контейнеров на сервере:
 
 ```bash
 APP_IMAGE=$(cat /var/lib/dorm-hub-deploy/current-image) docker compose --project-name dorm-hub --env-file /opt/dorm-hub/.env.production -f /etc/dorm-hub/compose.registry.yaml ps
 ```
 
-Логи по-прежнему: `docker logs --tail=100 -f dorm-hub-app-1`.
-Не запускайте старую команду up --build с compose.production.yaml поверх этой
-схемы: она переключит приложение обратно на локальную сборку.
+Логи: `docker logs --tail=100 -f dorm-hub-app-1`.
+Запуск `up --build` с `compose.production.yaml` поверх этой схемы переключит
+приложение обратно на локальную сборку.
 
-## Проверено до передачи
-
-Проверены синтаксис Bash и YAML, сохранение имён volumes и привязок портов,
-ограничение SSH-команд и сценарии скрипта с имитацией Docker: успешная выкладка,
-ошибка скачивания, ошибка healthcheck с восстановлением, ручной откат и
-отклонение посторонней команды. На имеющейся локальной копии исходников прошли
-фронтенд-тесты (актуальные результаты — в docs/review-2026-10-17.md). Полная сборка образа и работа реального SSH/Compose должны
-подтвердиться первым запуском Actions: здесь нет доступа к вашему VPS и Docker.
-
-Документация GitHub:
-https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images
-https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
-
-
-## Настройки безопасности после проверки 17 октября
+## Настройки безопасности
 
 Сборка и CI используют Go 1.27.3. Перед публикацией выполняется `govulncheck@v1.9.0`; находки или недоступность проверки останавливают выкладку.
 
-В `compose.production.yaml` и `deploy/compose.registry.yaml` включена ротация Docker-логов: драйвер local, до трёх файлов по 10 МБ на контейнер. На существующем VPS рабочая копия Compose хранится отдельно в `/etc/dorm-hub/compose.registry.yaml` и не обновляется от `git push`. Команды безопасного переноса конфигурации и проверки приведены в [отчёте](../docs/security-review-2026-10-17.md).
+В `compose.production.yaml` и `deploy/compose.registry.yaml` включена ротация Docker-логов: драйвер local, до трёх файлов по 10 МБ на контейнер. На существующем VPS рабочая копия Compose хранится отдельно в `/etc/dorm-hub/compose.registry.yaml` и не обновляется от `git push`. После переноса конфигурации ротацию можно проверить командой:
+
+```bash
+docker inspect --format '{{json .HostConfig.LogConfig}}' dorm-hub-app-1 dorm-hub-db-1
+```
+
+Пересоздание контейнера БД вызывает перерыв подключения. Перед такими изменениями
+нужна резервная копия; том базы удалять не требуется.
 
 Для Caddy перед приложением должен быть настроен `TRUSTED_PROXY_CIDRS` на непосредственный адрес прокси, видимый контейнеру. Без этого все посетители за ним могут делить общий лимит входа. Нельзя доверять `X-Forwarded-For` от произвольного адреса; публичный порт приложения остаётся привязан к 127.0.0.1.
