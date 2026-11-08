@@ -5,7 +5,7 @@ umask 077
 project=/opt/dorm-hub
 folder=/etc/dorm-hub-monitoring/config/grafana/dashboards
 if [[ ! -d "$folder" ]]; then
-  echo 'Monitoring is not installed. Complete the setup in docs/monitoring.md first.' >&2
+  echo 'Monitoring is not installed.' >&2
   exit 1
 fi
 # Read the fetched GitHub commit, without changing the application's worktree.
